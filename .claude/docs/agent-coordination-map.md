@@ -47,6 +47,11 @@
       godot-gdscript-specialist    -- GDScript: static typing, patterns, signals, performance
       godot-shader-specialist      -- Shaders: Godot shading language, visual shaders, VFX
       godot-gdextension-specialist -- Native: C++/Rust bindings, GDExtension, build systems
+
+    babylonjs-specialist -- Babylon.js 9 lead: TypeScript, scene graph, render loop, Havok
+      babylonjs-webxr-specialist  -- WebXR: sessions, hand tracking, depth, anchors, Quest/Vision Pro
+      babylonjs-shader-specialist -- Shaders: NodeMaterial v2, GLSL/WGSL, post-processing, particles
+      babylonjs-gui-specialist    -- UI: Babylon GUI (ADT, Controls, 3D GUI for XR, Node GUI)
 ```
 
 ### Legend
