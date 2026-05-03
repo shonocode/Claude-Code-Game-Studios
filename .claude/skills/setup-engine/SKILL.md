@@ -36,7 +36,7 @@ If no engine is specified, run an interactive engine selection process:
 
 **Question 1 — Prior experience** (ask this first, always, via `AskUserQuestion`):
 - Prompt: "Have you worked in any of these engines before?"
-- Options: `Godot` / `Unity` / `Unreal Engine 5` / `Multiple — I'll explain` / `None of them`
+- Options: `Godot` / `Unity` / `Unreal Engine 5` / `Babylon.js` / `Multiple — I'll explain` / `None of them`
 - If they pick a specific engine → recommend that engine. Prior experience outweighs all other factors. Confirm with them and skip the matrix.
 - If "None" or "Multiple" → continue to the questions below.
 
@@ -44,13 +44,14 @@ If no engine is specified, run an interactive engine selection process:
 
 **Question 2 — Target platform** (ask this second, always, via `AskUserQuestion` — platform eliminates or heavily weights engines before any other factor):
 - Prompt: "What platforms are you targeting for this game?"
-- Options: `PC (Steam / Epic)` / `Mobile (iOS / Android)` / `Console` / `Web / Browser` / `Multiple platforms`
+- Options: `PC (Steam / Epic)` / `Mobile (iOS / Android)` / `Console` / `Web / Browser` / `VR/AR (immersive)` / `Multiple platforms`
 - Platform rules that feed directly into the recommendation:
   - Mobile → Unity strongly preferred; Unreal is a poor fit; Godot is viable for simple mobile
   - Console → Unity or Unreal; Godot console support requires third-party publishers or significant extra work
-  - Web → Godot exports cleanly to web; Unity WebGL is functional; Unreal has poor web support
+  - Web → Babylon.js is the native code-first choice; Godot exports cleanly to web; Unity WebGL is functional; Unreal has poor web support
+  - VR/AR (immersive) → If browser-delivered (Quest browser, Vision Pro Safari) → Babylon.js strongly preferred (native WebXR). If native (PCVR app, Quest standalone app) → Unity (broadest VR ecosystem) or Unreal (visual fidelity). Vision Pro native is outside this engine set (Swift/visionOS SDK required).
   - PC only → all engines viable; other factors decide
-  - Multiple → Unity is the most portable across PC/mobile/console
+  - Multiple → Unity is the most portable across PC/mobile/console; Babylon.js is most portable across web platforms but only web
 
 1. **What kind of game?** (2D, 3D, or both?)
 2. **Primary input method?** (keyboard/mouse, gamepad, touch, or mixed?)
@@ -82,6 +83,12 @@ Do NOT use a simple scoring matrix that eliminates engines. Instead, reason thro
 - Licensing reality: 5% royalty only applies AFTER $1M gross revenue per title. For a first game or any game that doesn't reach $1M, it costs nothing. This threshold is high enough that most indie developers will never pay it.
 - Best fit: AAA-quality 3D; large open-world games; photorealistic visuals; developers with C++ experience or willing to use Blueprint; games targeting high-end PC/console where visual fidelity is a core selling point
 
+**Babylon.js**
+- Genuine strengths: Web-native (no plugin or app store install), WebXR is best-in-class for browser-delivered VR/AR (Quest 3, Vision Pro Safari), TypeScript-first with full type safety, code-centric workflow (no editor lock-in), MIT/Apache-2.0 licensed and Microsoft-backed, free forever, modern rendering (WebGL2 stable + WebGPU production-ready as of 9.0)
+- Real limitations: Not a full game engine — it's a 3D library. No built-in scene editor (community Babylon.js Editor exists but not first-party). No prefab/component system equivalent to Unity/Unreal — you architect game systems yourself. No console export. Mobile is web-wrapped (Capacitor/Cordova/Electron), not native. Smaller game-dev community than Unity/Unreal/Godot. Asset pipeline is DIY (no drag-and-drop). Havok physics fails silently on iOS < 16.4 (no WebAssembly SIMD).
+- Licensing reality: Apache 2.0. No revenue thresholds, no policy-change risk. Owned by Microsoft, professionally maintained, fully open source.
+- Best fit: Web-native games (browser-first); WebXR / VR/AR experiences targeting Quest or Vision Pro browser; TypeScript developers; teams comfortable with full architectural control; experimental/educational 3D; projects where instant-load (no install) is a feature
+
 **Genre-specific guidance** (factor this into the recommendation):
 - 2D any style → Godot strongly preferred
 - 3D stylized / atmospheric / contained world → Godot viable, Unity solid alternative
@@ -93,6 +100,8 @@ Do NOT use a simple scoring matrix that eliminates engines. Instead, reason thro
 - Action RPG / Soulslike → Unity or Unreal for 3D; community support and assets matter here
 - Platformer 2D → Godot
 - Strategy / top-down / RTS → Godot or Unity depending on 2D vs 3D
+- Web-native / browser-first → Babylon.js (code-first) or Godot (editor-first); both export to web well
+- VR/AR via browser (Quest 3, Vision Pro Safari) → Babylon.js strongly preferred (native WebXR)
 
 **Recommendation format:**
 1. Show a comparison table with the user's specific factors as rows
@@ -126,7 +135,12 @@ Once the engine is chosen:
 
 ## 4. Update CLAUDE.md Technology Stack
 
-### Language Selection (Godot only)
+### Language Selection (Godot only — others are auto-determined)
+
+For non-Godot engines, the language is fixed and no question is asked:
+- Unity → C#
+- Unreal → C++ + Blueprint
+- Babylon.js → TypeScript (strict mode + noUncheckedIndexedAccess mandatory)
 
 If Godot was chosen, ask the user which language to use **before** showing the proposed Technology Stack:
 
@@ -167,6 +181,14 @@ Update the Technology Stack section, replacing the `[CHOOSE]` placeholders with 
 - **Asset Pipeline**: Unreal Content Pipeline
 ```
 
+**For Babylon.js:**
+```markdown
+- **Engine**: Babylon.js [version]
+- **Language**: TypeScript (strict + noUncheckedIndexedAccess mandatory)
+- **Build System**: Vite (recommended) or webpack
+- **Asset Pipeline**: glTF/glb import via @babylonjs/loaders, KTX2 textures for production, .env files for IBL
+```
+
 ---
 
 ## 5. Populate Technical Preferences
@@ -195,6 +217,16 @@ engine-appropriate defaults. Read the existing template first, then fill in:
 - Functions: PascalCase (e.g., `TakeDamage()`)
 - Booleans: `b` prefix (e.g., `bIsAlive`)
 - Files: Match class without prefix (e.g., `PlayerController.h`)
+
+**For Babylon.js (TypeScript):**
+- Classes: PascalCase (e.g., `PlayerController`)
+- Functions/methods: camelCase (e.g., `updatePosition`, `takeDamage`)
+- Variables: camelCase (e.g., `moveSpeed`)
+- Constants: UPPER_SNAKE_CASE (e.g., `MAX_HEALTH`)
+- Files: kebab-case or camelCase (e.g., `player-controller.ts`) — pick one and be consistent project-wide
+- Type imports: `import type { ... }` separated from runtime imports for tree-shaking
+- Observer callbacks: prefixed `onSomething` (matches Babylon.js `Observable<T>` conventions)
+- Async functions: no special prefix (TypeScript types make async-ness visible)
 
 ### Input & Platform Section
 
@@ -234,7 +266,7 @@ Example filled section:
   - Prompt: "Should I set default performance budgets now, or leave them for later?"
   - Options: `[A] Set defaults now (60fps, 16.6ms frame budget, engine-appropriate draw call limit)` / `[B] Leave as [TO BE CONFIGURED] — I'll set these when I know my target hardware`
   - If [A]: populate with the suggested defaults. If [B]: leave as placeholder.
-- **Testing**: Suggest engine-appropriate framework (GUT for Godot, NUnit for Unity, etc.) — ask before adding.
+- **Testing**: Suggest engine-appropriate framework (GUT/GdUnit4 for Godot, Unity Test Framework for Unity, UE Automation for Unreal, **Vitest + Playwright for Babylon.js**) — ask before adding.
 - **Forbidden Patterns**: Leave as placeholder — do NOT pre-populate.
 - **Allowed Libraries**: Leave as placeholder — do NOT pre-populate dependencies the project does not currently need. Only add a library here when it is actively being integrated, not speculatively.
 
@@ -291,6 +323,31 @@ Also populate the `## Engine Specialists` section in `technical-preferences.md` 
 | General architecture review | unreal-specialist |
 ```
 
+**For Babylon.js:**
+```markdown
+## Engine Specialists
+- **Primary**: babylonjs-specialist
+- **Language/Code Specialist**: babylonjs-specialist (TypeScript review — primary covers it; TS is fixed)
+- **Shader Specialist**: babylonjs-shader-specialist (NodeMaterial v2, GLSL/WGSL, post-processing, particle shaders)
+- **UI Specialist**: babylonjs-gui-specialist (Babylon GUI: ADT, 2D Controls, 3D GUI for XR, Node GUI)
+- **Additional Specialists**: babylonjs-webxr-specialist (WebXR sessions, hand tracking, depth sensing, anchors, Quest/Vision Pro)
+- **Routing Notes**: Invoke primary for scene graph architecture, asset loading, render loop, Vite/tsconfig setup, and physics integration. Invoke shader specialist for any material/shader/post-process work. Invoke UI specialist for in-scene UI (HTML overlay UI is `ui-programmer` domain). Invoke WebXR specialist for any immersive/VR/AR feature. Babylon.js is TypeScript-only — no language specialist split.
+
+### File Extension Routing
+
+| File Extension / Type | Specialist to Spawn |
+|-----------------------|---------------------|
+| Game code (.ts files) | babylonjs-specialist |
+| Shader files (.glsl, .wgsl, inline shaders in .ts) | babylonjs-shader-specialist |
+| NodeMaterial JSON exports (.nme.json) | babylonjs-shader-specialist |
+| In-scene UI code (Babylon GUI, ADT, 3D GUI) | babylonjs-gui-specialist |
+| Node GUI exports (.gui.json) | babylonjs-gui-specialist |
+| WebXR / immersive feature code | babylonjs-webxr-specialist |
+| Build / config files (vite.config.ts, tsconfig.json, package.json) | babylonjs-specialist |
+| HTML overlay UI (DOM/CSS) | ui-programmer (engine-agnostic) |
+| General architecture review | babylonjs-specialist |
+```
+
 ### Collaborative Step
 Present the filled-in preferences to the user. For Godot, include the chosen language and note where the full naming conventions and routing tables live:
 > "Here are the default technical preferences for [engine] ([language if Godot]). The naming conventions and specialist routing are in Appendix A of this skill — I'll apply the [GDScript/C#/Both] variant. Want to customize any of these, or shall I save the defaults?"
@@ -310,6 +367,7 @@ Check whether the engine version is likely beyond the LLM's training data.
 - Godot: training data likely covers up to ~4.3
 - Unity: training data likely covers up to ~2023.x / early 6000.x
 - Unreal: training data likely covers up to ~5.3 / early 5.4
+- Babylon.js: training data likely covers up to ~7.x (8.0 March 2025, 9.0 March 2026 are post-cutoff)
 
 Compare the user's chosen version against these baselines:
 
