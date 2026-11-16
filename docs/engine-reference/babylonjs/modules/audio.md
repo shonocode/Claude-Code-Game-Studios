@@ -1,6 +1,6 @@
 # Babylon.js Audio — Quick Reference
 
-Last verified: 2026-09-25 | Engine: Babylon.js 9.28
+Last verified: 2026-11-16 | Engine: Babylon.js 9.36
 
 ## ⚠️ AudioEngine v2 (8.0 Breaking Change)
 

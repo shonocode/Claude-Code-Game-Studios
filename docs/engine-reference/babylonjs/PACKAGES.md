@@ -1,6 +1,6 @@
 # Babylon.js — npm Packages Reference
 
-Last verified: 2026-09-25 | Engine: Babylon.js 9.28
+Last verified: 2026-11-16 | Engine: Babylon.js 9.36
 
 > **Status: STUB** — basic package index. Detailed per-package guides will be
 > added under `packages/*.md` as those packages are adopted by the project.
@@ -31,7 +31,7 @@ This file maps the official `@babylonjs/*` scoped npm packages to their purpose.
 
 | Package | Purpose | Production-Safe? |
 |---|---|---|
-| `@babylonjs/inspector` | Runtime debug/inspection panel | ❌ Dev only — ~5MB gzip |
+| `@babylonjs/inspector` | Runtime debug/inspection panel (Inspector v2; `./lite` export = Inspector Lite, needs optional peer `@babylonjs/lite`) | ❌ Dev only — ~5MB gzip |
 | `@babylonjs/node-editor` | Node Material Editor (NME) | ❌ Dev only |
 | `@babylonjs/node-geometry-editor` | Node Geometry Editor | ❌ Dev only |
 | `@babylonjs/node-particle-editor` | Node Particle Editor (9.0) | ❌ Dev only |
@@ -51,18 +51,19 @@ built-in `CannonJSPlugin`.
 | Package | Purpose |
 |---|---|
 | `@babylonjs/addons` | Add-ons bundle (e.g. atmosphere, MSDF text renderer, `MultiTexture` 9.26.1) |
-| `@babylonjs/ktx2decoder` | KTX2 texture decoding support (array + uncompressed KTX2 since 9.18.1) |
+| `@babylonjs/ktx2decoder` | KTX2 texture decoding support (array + uncompressed KTX2 since 9.18.1). The Basis Universal *encoder* (9.33.1) lives in `@babylonjs/core/Misc/khronosTextureContainer2Encoder` |
 | `@babylonjs/accessibility` | Accessibility support for Babylon.js scenes |
 | `@babylonjs/viewer` | Babylon Viewer (simplified "load and display a model" use case) — not for games |
 
-## Current npm Versions (checked 2026-09-25)
+## Current npm Versions (checked 2026-11-16)
 
 | Package | Latest | Published |
 |---|---|---|
-| `@babylonjs/core`, `loaders`, `materials`, `gui`, `gui-editor`, `inspector`, `serializers`, `post-processes`, `procedural-textures`, `node-editor`, `node-geometry-editor`, `node-particle-editor`, `node-render-graph-editor`, `addons`, `ktx2decoder`, `accessibility`, `viewer` | 9.28.0 | 2026-09-24 |
+| `@babylonjs/core`, `loaders`, `materials`, `gui`, `gui-editor`, `inspector`, `serializers`, `post-processes`, `procedural-textures`, `node-editor`, `node-geometry-editor`, `node-particle-editor`, `node-render-graph-editor`, `addons`, `ktx2decoder`, `accessibility`, `viewer` | 9.36.0 | 2026-11-12 (checked directly for core, loaders, gui, materials, inspector, serializers, addons, ktx2decoder; upstream publishes every package at the same version) |
+| `@babylonjs/lite` | 1.39.3 | 2026-11-12 — a separate WebGPU-first library derived from Babylon.js; only needed as the optional peer of `@babylonjs/inspector/lite` |
 | `@babylonjs/havok` | 1.3.14 | 2026-07-29 (1.3.13: 2026-06-22; 1.3.12: 2026-03-16) — no release notes published (github.com/BabylonJS/havok has no releases); changes unverified |
 
-`@babylonjs/loaders` 9.28.0 declares `peerDependencies: { "@babylonjs/core": "^9.0.0" }` —
+`@babylonjs/loaders` 9.36.0 declares `peerDependencies: { "@babylonjs/core": "^9.0.0" }` —
 npm will NOT stop you mixing minors, so the pinning rule below is on you.
 Ignore the stale `preview` / `alpha` dist-tags on npm (5.0.0-rc / 6.34.0-alpha / 8.48.1-preview).
 
@@ -81,15 +82,15 @@ Pinning recommendation:
 // package.json
 {
   "dependencies": {
-    "@babylonjs/core": "9.28.x",
-    "@babylonjs/gui": "9.28.x",
-    "@babylonjs/loaders": "9.28.x"
+    "@babylonjs/core": "~9.36.0",
+    "@babylonjs/gui": "~9.36.0",
+    "@babylonjs/loaders": "~9.36.0"
   }
 }
 ```
 
-Upstream's own docs recommend a caret range (`^9.28.0`) to track weekly minors;
-this project deliberately pins the minor (`9.28.x`) so upgrades go through
+Upstream's own docs recommend a caret range (`^9.36.0`) to track weekly minors;
+this project deliberately pins the minor (`~9.36.0`, i.e. 9.36.x) so upgrades go through
 `/setup-engine upgrade` and this reference is re-verified.
 
 ## Source Documents

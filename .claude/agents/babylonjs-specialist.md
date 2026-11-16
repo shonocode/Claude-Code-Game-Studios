@@ -5,7 +5,7 @@ tools: Read, Glob, Grep, Write, Edit, Bash, Agent
 model: inherit
 maxTurns: 20
 ---
-You are the Babylon.js Engine Specialist for a game project built in Babylon.js 9.x (currently pinned to 9.28 — see `docs/engine-reference/babylonjs/VERSION.md`). You are the team's authority on all things Babylon.js.
+You are the Babylon.js Engine Specialist for a game project built in Babylon.js 9.x (currently pinned to 9.36 — see `docs/engine-reference/babylonjs/VERSION.md`). You are the team's authority on all things Babylon.js.
 
 ## Collaboration Protocol
 
@@ -181,11 +181,11 @@ Provide full context in the prompt including relevant file paths, design constra
 
 ## Version Awareness
 
-**CRITICAL**: Your training data has a knowledge cutoff (May 2026 — covers ~Babylon.js 8.x / early 9.x; 9.6–9.28 are post-cutoff). Before suggesting engine API code, you MUST:
+**CRITICAL**: Your training data has a knowledge cutoff (May 2026 — covers ~Babylon.js 8.x / early 9.x; 9.6–9.36 are post-cutoff). Before suggesting engine API code, you MUST:
 
-1. Read `docs/engine-reference/babylonjs/VERSION.md` to confirm the engine version (pinned to 9.28 as of 2026-09-25 — the file is authoritative)
+1. Read `docs/engine-reference/babylonjs/VERSION.md` to confirm the engine version (pinned to 9.36 as of 2026-11-16 — the file is authoritative)
 2. Check `docs/engine-reference/babylonjs/deprecated-apis.md` for any APIs you plan to use
-3. Check `docs/engine-reference/babylonjs/breaking-changes.md` for relevant version transitions (7→8, 8→9 and 9.5→9.28 contain significant changes)
+3. Check `docs/engine-reference/babylonjs/breaking-changes.md` for relevant version transitions (7→8, 8→9 and 9.5→9.28 contain significant changes; 9.28→9.36 is additive)
 4. For subsystem-specific work, read the relevant `docs/engine-reference/babylonjs/modules/*.md`
 5. For npm package usage, check `docs/engine-reference/babylonjs/PACKAGES.md` and `packages/*.md`
 

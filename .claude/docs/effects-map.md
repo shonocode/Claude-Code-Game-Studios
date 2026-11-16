@@ -1916,7 +1916,7 @@ The Unreal row is Windows'. `/setup-engine` writes the Linux block (`Engine/Buil
 
 > **Babylon.js commands are npm scripts, and nothing is asked.** A web build has
 > one target (Vite writes `dist/`), so `build` has no preset placeholder. Each
-> `npm` command must name a script in `package.json` — `/setup-engine` §7.5
+> `npm` command must name a script in `package.json` — `/setup-engine` §7.5 (`references/babylonjs.md` B6)
 > writes `dev`/`build`, `/test-setup` adds `test` — and `project-coherence.sh`
 > reports any that are missing. `run` starts the Vite dev server rather than a
 > window; the run-and-observe step opens it in a browser and captures it (see
