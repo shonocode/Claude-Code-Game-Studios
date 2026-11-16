@@ -9,15 +9,24 @@
 # false NEGATIVE, the dangerous direction). Hashing the bytes has neither
 # problem: content changed <=> hash changed. The residual failure directions
 # are false POSITIVES (re-review something unchanged — wasted tokens, never a
-# missed review): a hash tool changing between stamp and check, or a receipt
-# file that was never written.
+# missed review): a hash tool changing between stamp and check, a receipt
+# file that was never written, or no hash tool at all (git, sha1sum, shasum),
+# which makes everything read CHANGED and says so on stderr.
 #
 # ONE EXCEPTION, and it is deliberate. `check` stays silent on an absent
-# LITERAL path, because a caller may name an optional input on every run
-# (/design-review does exactly this with the entity registry) and reporting it
-# would block a legitimate skip. That silence is a false negative only if a
-# caller passes a literal path it believes must exist — so callers name
-# optional inputs and nothing else.
+# LITERAL path that the receipt never stamped, because a caller may name an
+# optional input on every run (/design-review does exactly this with the
+# entity registry) and reporting it would block a legitimate skip. That
+# silence is a false negative only if a caller passes a literal path it
+# believes must exist — so callers name optional inputs and nothing else. A
+# path the receipt DID stamp and that is now absent is not optional: the last
+# review read it, and it reads GONE.
+#
+# THE RECEIPT IS ALSO A LIST. `check` compares every path the receipt stamps,
+# not only the ones the caller names. The receipt records what the
+# last review actually read; a caller's list can fall behind what its phases
+# load, and a file it leaves out would otherwise never be compared -- which is
+# how /architecture-review stood on an old report after an engine upgrade.
 #
 # An unexpanded GLOB is the case the same code path can swallow, and is NOT
 # covered by the above: it means a whole document class was
@@ -35,13 +44,20 @@
 #       Reviewed-Content-Hash: <path> <hash>
 #     The calling skill pastes these lines into the review report / log
 #     entry it is writing. Paths are normalised to forward slashes.
+#     An absent literal path is left out with a note on stderr and does not
+#     fail the run, so one command can name the optional inputs; a glob that
+#     matched nothing, or a file that could not be hashed, exits 2.
 #
-#   bash .claude/scripts/review-receipts.sh check <receipt-file> <file> [<file>...]
+#   bash .claude/scripts/review-receipts.sh check <receipt-file> [<file>...]
 #     First line:  RECEIPT: <receipt-file>   (or RECEIPT: NONE if missing/empty)
-#     Then, per file:
+#     Then, once per path -- the files named, in order, then every other
+#     path the receipt stamps, in the order first stamped (with no files
+#     named, only those: how /story-done reads an evidence stamp):
 #       UNCHANGED: <path>   hash matches the LATEST stamp for that path
 #       CHANGED: <path>     hash differs from the latest stamp
 #       NEW: <path>         no stamp for that path in the receipt file
+#       GONE: <path>        the receipt stamps it and it no longer exists:
+#                           the last review read a file since deleted or moved
 #       UNRESOLVED: <pat>   the argument is a glob the shell never expanded,
 #                           so a whole class of documents was asked for and
 #                           none was examined. NOT the same as an absent
@@ -50,8 +66,8 @@
 #     With RECEIPT: NONE, every file is reported NEW (nothing to compare).
 #
 #     A caller that skips work on "everything UNCHANGED" MUST treat an
-#     UNRESOLVED line as disqualifying: the set it compared was not the set
-#     it asked for.
+#     UNRESOLVED or GONE line as disqualifying: the set it compared was not
+#     the set it asked for, or not the set the last review read.
 #
 #   bash .claude/scripts/review-receipts.sh sections-hash <file>
 #     Per ^## section of the file (plus __preamble__ for content before the
@@ -75,22 +91,76 @@
 # The LATEST stamp wins: receipt files are append-only logs, so the last
 # occurrence of a path is the most recent review of it.
 
+case "${1:-}" in
+  -h|--help) sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+esac
+
 set -u
 export LC_ALL=C
 
+# SHA-1 of stdin, as "<hex>  -". The fallback when git cannot hash: sha1sum is
+# GNU coreutils, which older macOS releases do not ship; every macOS has
+# shasum, which prints the same hex. Each is RUN before it is used -- a tool that is found but fails must
+# not win. Returns 1 when neither runs.
+sha1_stdin() {
+  if [ -z "${_RR_SHA1+x}" ]; then
+    _RR_SHA1=""
+    if printf '' | sha1sum >/dev/null 2>&1; then _RR_SHA1=sha1sum
+    elif printf '' | shasum -a 1 >/dev/null 2>&1; then _RR_SHA1=shasum
+    fi
+  fi
+  case "$_RR_SHA1" in
+    sha1sum) sha1sum ;;
+    shasum)  shasum -a 1 ;;
+    *)       return 1 ;;
+  esac
+}
+
+# Printed at most once per run, on stderr: with no hash tool nothing can be
+# verified unchanged, and the caller should know why everything reads CHANGED.
+_rr_warned=""
+warn_no_hash() {
+  [ -n "$_rr_warned" ] && return 0
+  echo "review-receipts: no hash tool (git, sha1sum or shasum) -- nothing can read UNCHANGED" >&2
+  _rr_warned=1
+}
+
 hash_file() {
   # git hash-object is preferred (stable, content-addressed, no mtime input).
-  # sha1sum fallback produces a DIFFERENT hash for the same bytes (git
+  # The SHA-1 fallback produces a DIFFERENT hash for the same bytes (git
   # prepends a blob header) — so a stamp made with one tool and checked with
   # the other reads CHANGED. That failure direction is safe (re-review).
+  # The file goes in on stdin: sha1sum starts its line with "\" when the file
+  # name holds a backslash, as a Windows path can.
   if command -v git >/dev/null 2>&1; then
     git hash-object -- "$1" 2>/dev/null && return 0
   fi
-  sha1sum "$1" 2>/dev/null | cut -d' ' -f1
+  sha1_stdin < "$1" 2>/dev/null | cut -d' ' -f1
 }
 
 norm_path() {
   printf '%s\n' "$1" | sed 's|\\|/|g'
+}
+
+# compare_stamp <file> <normalised path> <receipt>: one UNCHANGED / CHANGED /
+# NEW line for a file that exists. The LATEST stamp for the path wins
+# (append-only log); grep -F on the path avoids regex surprises from
+# dots/dashes in filenames.
+compare_stamp() {
+  # The CR of a CRLF receipt goes first: on Linux and macOS it would stay on
+  # the hash, and every path would read CHANGED.
+  _stored=$(grep -F "Reviewed-Content-Hash: $2 " "$3" 2>/dev/null | tail -1 | awk '{ sub(/\r$/, ""); print $NF }')
+  if [ -z "$_stored" ]; then
+    printf 'NEW: %s\n' "$2"
+    return 0
+  fi
+  _current=$(hash_file "$1")
+  [ -n "$_current" ] || warn_no_hash
+  if [ "$_current" = "$_stored" ]; then
+    printf 'UNCHANGED: %s\n' "$2"
+  else
+    printf 'CHANGED: %s\n' "$2"
+  fi
 }
 
 # An argument that does not name a file is one of two very different things,
@@ -103,8 +173,8 @@ norm_path() {
 #                                      registry "doesn't appear in the output
 #                                      and doesn't block the skip". Reporting
 #                                      it would break that skip and force a
-#                                      full re-review (~46k tokens, measured)
-#                                      on every project without a registry.
+#                                      full re-review on every project
+#                                      without a registry.
 #                                      Staying silent here is DELIBERATE.
 #
 #   a pattern the shell never       -> the caller asked for a whole class of
@@ -147,7 +217,7 @@ section_spans() {
 
 section_hash() { # <file> <start> <end>
   # Mirrors hash_file above, and for the same reason it was written that way.
-  # This called bare `sha1sum`, which is GNU coreutils and absent on macOS. The
+  # This called bare `sha1sum`, which is GNU coreutils and absent on older macOS. The
   # failure was not a visible error: sha1sum missing makes this return EMPTY,
   # an empty `cur` compares EQUAL to an empty stored hash, and the check below
   # then prints SECTION-UNCHANGED for every section however it was edited.
@@ -158,9 +228,10 @@ section_hash() { # <file> <start> <end>
   if command -v git >/dev/null 2>&1; then
     _sec=$(sed -n "$2,$3p" "$1" | git hash-object --stdin 2>/dev/null)
   fi
-  [ -n "$_sec" ] || _sec=$(sed -n "$2,$3p" "$1" | sha1sum 2>/dev/null | cut -d' ' -f1)
+  [ -n "$_sec" ] || _sec=$(sed -n "$2,$3p" "$1" | sha1_stdin 2>/dev/null | cut -d' ' -f1)
   # Never empty. An unhashable section must be visible in the receipt rather
-  # than silently equal to the next unhashable one.
+  # than silently equal to the next unhashable one -- and sections-check never
+  # reads this placeholder as UNCHANGED, since it matches every section.
   [ -n "$_sec" ] || _sec="NO-HASH-TOOL"
   printf '%s' "$_sec"
 }
@@ -173,8 +244,12 @@ case "$mode" in
     rc=0
     for f in "$@"; do
       if [ ! -f "$f" ]; then
-        echo "review-receipts: no such file: $f" >&2
-        rc=2
+        if is_unexpanded_glob "$f"; then
+          echo "review-receipts: matched no file: $f" >&2
+          rc=2
+        else
+          echo "review-receipts: not stamped, no such file: $f" >&2
+        fi
         continue
       fi
       h=$(hash_file "$f")
@@ -188,7 +263,8 @@ case "$mode" in
     shift
     receipt="${1:-}"
     shift 2>/dev/null || true
-    [ $# -ge 1 ] || { echo "review-receipts: check mode needs a receipt file and at least one file" >&2; exit 2; }
+    # No files named: every path the receipt stamps (an evidence stamp).
+    [ -n "$receipt" ] || { echo "review-receipts: check mode needs a receipt file" >&2; exit 2; }
 
     if [ ! -s "${receipt:-}" ]; then
       echo "RECEIPT: NONE"
@@ -203,26 +279,43 @@ case "$mode" in
     fi
 
     echo "RECEIPT: $(norm_path "$receipt")"
+    # Every path the receipt stamps, once, in the order first stamped. The
+    # path is everything between the prefix and the last space, so a name
+    # with a space survives.
+    stamped=$(sed -n 's/.*Reviewed-Content-Hash: \(.*\) [^ ]*$/\1/p' "$receipt" 2>/dev/null | awk '!seen[$0]++')
+    # Newline-delimited set of paths already reported: no `declare -A`, which
+    # is bash 4 (see sections-check below).
+    _RR_NL='
+'
+    reported="$_RR_NL"
     for f in "$@"; do
-      if [ ! -f "$f" ]; then
-        is_unexpanded_glob "$f" && printf 'UNRESOLVED: %s\n' "$(norm_path "$f")"
-        continue
-      fi
       p=$(norm_path "$f")
-      # Last occurrence wins (append-only log). grep -F on the path avoids
-      # regex surprises from dots/dashes in filenames.
-      stored=$(grep -F "Reviewed-Content-Hash: $p " "$receipt" 2>/dev/null | tail -1 | awk '{print $NF}')
-      if [ -z "$stored" ]; then
-        printf 'NEW: %s\n' "$p"
+      if [ ! -f "$f" ]; then
+        if is_unexpanded_glob "$f"; then
+          printf 'UNRESOLVED: %s\n' "$p"
+        elif printf '%s\n' "$stamped" | grep -qxF -- "$p"; then
+          printf 'GONE: %s\n' "$p"
+          reported="$reported$p$_RR_NL"
+        fi
         continue
       fi
-      current=$(hash_file "$f")
-      if [ "$current" = "$stored" ]; then
-        printf 'UNCHANGED: %s\n' "$p"
-      else
-        printf 'CHANGED: %s\n' "$p"
-      fi
+      case "$reported" in *"$_RR_NL$p$_RR_NL"*) continue ;; esac
+      reported="$reported$p$_RR_NL"
+      compare_stamp "$f" "$p" "$receipt"
     done
+    # The paths the last review read that the caller did not name.
+    while IFS= read -r p; do
+      [ -n "$p" ] || continue
+      case "$reported" in *"$_RR_NL$p$_RR_NL"*) continue ;; esac
+      reported="$reported$p$_RR_NL"
+      if [ -f "$p" ]; then
+        compare_stamp "$p" "$p" "$receipt"
+      else
+        printf 'GONE: %s\n' "$p"
+      fi
+    done <<EOF_ST
+$stamped
+EOF_ST
     exit 0
     ;;
 
@@ -233,7 +326,9 @@ case "$mode" in
     p=$(norm_path "$f")
     while IFS=$(printf '\t') read -r s e h; do
       [ -n "$h" ] || continue
-      printf 'Reviewed-Section-Hash: %s#%s %s\n' "$p" "$h" "$(section_hash "$f" "$s" "$e")"
+      sec_hash=$(section_hash "$f" "$s" "$e")
+      [ "$sec_hash" = "NO-HASH-TOOL" ] && warn_no_hash
+      printf 'Reviewed-Section-Hash: %s#%s %s\n' "$p" "$h" "$sec_hash"
     done <<EOF_SH
 $(section_spans "$f")
 EOF_SH
@@ -261,11 +356,12 @@ EOF_SH
     # Safe as a delimited string because a section key is heading text, which
     # cannot contain a TAB or a newline. Matching is field-exact via awk, never
     # a substring grep, so one heading cannot match another that contains it.
-    _RR_TAB=$(printf '\t')
+    _RR_TAB=$(printf '\t'); _RR_CR=$(printf '\r')
     STORED=""
     STORED_N=0
     if [ -s "${receipt:-}" ]; then
       while IFS= read -r line; do
+        line=${line%"$_RR_CR"}   # a CRLF receipt's CR, as in compare_stamp
         case "$line" in
           "Reviewed-Section-Hash: $p#"*) ;;
           *) continue ;;
@@ -300,6 +396,12 @@ EOF_SC
       # stamp recorded with an empty hash reads NEW, not UNCHANGED.
       if [ -z "$sv" ]; then
         printf 'SECTION-NEW: %s\n' "$h"
+      elif [ "$cur" = "NO-HASH-TOOL" ]; then
+        # Nothing could hash this section, so nothing can call it unchanged --
+        # least of all a stored placeholder, which equals every other one. A
+        # wasted re-review is safe; a changed section skipped is not.
+        warn_no_hash
+        printf 'SECTION-CHANGED: %s\n' "$h"
       elif [ "$cur" = "$sv" ]; then
         printf 'SECTION-UNCHANGED: %s\n' "$h"
       else

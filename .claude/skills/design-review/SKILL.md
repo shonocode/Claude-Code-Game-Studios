@@ -3,14 +3,19 @@ name: design-review
 description: "Reviews one design document for completeness, internal consistency, implementability, and design standards. Before handing to programmers."
 argument-hint: "[path-to-design-doc] [--review full|lean|solo]"
 user-invocable: true
-allowed-tools: Read, Glob, Grep, Write, Edit, Bash, Agent, AskUserQuestion, Bash(bash "*/.claude/skills/design-review/../../hooks/yaml-helper.sh" resolve_config *)
+allowed-tools: Read, Glob, Grep, Write, Edit, Agent, AskUserQuestion, Bash(bash "*/.claude/skills/design-review/../../hooks/yaml-helper.sh" resolve_config *), Bash(bash .claude/scripts/review-receipts.sh check *), Bash(bash .claude/scripts/review-receipts.sh hash *), Bash(bash .claude/scripts/gdd-structure-check.sh *), Bash(grep -E '^  - name:' design/registry/entities.yaml), Bash(grep -n -i -E *)
 model: sonnet
 ---
 
 !`bash "${CLAUDE_SKILL_DIR}/../../hooks/yaml-helper.sh" resolve_config --keys review_mode,automation,workflow,system_overrides`
 
-Resolved above — use as-is; `--review` overrides `review_mode`. No block →
-defaults in `.claude/docs/config-resolution.md`.
+Resolved above — use as-is; `--review` overrides `review_mode`. `--depth` is
+the pre-1.1 name for the same flag: treat `--depth <mode>` exactly as
+`--review <mode>`, and say once that it was renamed. Given both, `--review`
+wins and `--depth` is ignored — say so. No block → defaults in
+`.claude/docs/config-resolution.md`.
+
+# Design Review
 
 
 ## Phase 0: Parse Arguments
@@ -45,47 +50,58 @@ Resolved mode controls how thorough this review is:
 ## Phase 1: Load Documents
 
 **Freshness check first — a re-review of an unchanged document costs full
-price (~46k tokens, measured) and reproduces the same verdict.** Run:
+price and reproduces the same verdict.** Run:
 
 ```
-Bash: bash .claude/scripts/review-receipts.sh check "design/gdd/reviews/[doc-name]-review-log.md" "[target-doc-path]" "design/registry/entities.yaml"
+Bash: bash .claude/scripts/review-receipts.sh check "design/gdd/reviews/[doc-name]-review-log.md" "[target-doc-path]" "design/registry/entities.yaml" ".claude/skills/design-review/SKILL.md"
 ```
 
 The registry is in the check because this review consults it for
 cross-document facts — an unchanged GDD reviewed against a *changed*
 registry can reach different conclusions, so the skip is only safe when
-**every** listed line reads `UNCHANGED` (an absent registry simply doesn't
-appear in the output and doesn't block the skip).
+**every** line reads `UNCHANGED` (a registry that never existed doesn't
+appear in the output and doesn't block the skip). This skill's file is in it
+because a changed skill reviews differently. The check also compares every
+other file the log stamps — the related GDDs, concept or brief and narrative
+files earlier reviews read — and prints `GONE:` for one that no longer exists.
+
+Then read the latest entry's `Review mode:` line. That review **covers** this
+run only when its mode is the same as or deeper than the mode resolved now
+(`full` > `lean` > `solo`) and its workflow is the same or deeper (`full` >
+`standard` > `minimal`). An entry without the line was written before it
+existed and covers nothing.
 
 - **All `UNCHANGED`** and the log's latest entry carries a verdict — surface it:
-  *"This document is byte-identical to its last review on [date] (verdict:
-  [verdict])."* If that verdict was APPROVED, offer via `AskUserQuestion`:
+  *"This document is byte-identical to its last review on [date] ([mode]
+  review, verdict: [verdict])."* If that verdict was APPROVED and that review
+  covers this run, offer via `AskUserQuestion`:
   `[A] Use the prior verdict (Recommended)` / `[B] Re-review anyway` —
   `guided` proceeds with [A] and notes it; `autonomous` logs via
-  `log_decision` and uses the prior verdict. If it was NEEDS REVISION or
+  `log_decision` and uses the prior verdict. If it was APPROVED but the
+  review asked for now is deeper than the logged one, say so — *"That was a
+  [mode] review at workflow [tier]; this run asks for [mode] at [tier]."* —
+  and offer `[A] Re-review at [mode] (Recommended)` / `[B] Use the prior
+  [mode] verdict`; `guided` and `autonomous` re-review (`autonomous` logs it
+  via `log_decision`). If it was NEEDS REVISION or
   MAJOR REVISION NEEDED, say so plainly: the document has not changed since
   it failed review — the prior findings stand; revising the document is the
   next step, not re-reviewing it. Offer to display the prior findings from
   the log.
-- **Only the registry line reads `CHANGED`** (doc `UNCHANGED`) — the prior
-  verdict stands except for cross-document facts: re-verify the doc's
-  registry-sourced values against the new registry and re-issue the verdict;
-  escalate to a full re-review only if a conflict appears.
-- **Target doc `CHANGED` or `NEW`, or `RECEIPT: NONE`** — proceed with the
-  full review below. **Do not offer a partial/delta re-review that skips
-  reading or re-analyzing unchanged sections.** Measured against a full review:
-  three independent designs (a straightforward section-scoped pass, one with
-  an explicit forced whole-document scan step, and one gated on a
-  genuinely thorough two-round prior review) each caught only 2 of 6 real
-  defects a full review found on the same document, and the most
-  careful version cost *more* tokens than the full review while catching
-  the same reduced fraction. "Unchanged since last review" only means
+- **The target doc and this skill's file `UNCHANGED`, and only the registry or
+  another stamped cross-document file `CHANGED`, `NEW` or `GONE`** — the prior
+  verdict stands except for cross-document facts: re-verify the doc's values
+  against the changed files and re-issue the verdict; escalate to a full
+  re-review if a conflict appears or that review does not cover this run.
+- **Target doc or this skill's file `CHANGED` or `NEW`, or `RECEIPT: NONE`** —
+  proceed with the full review below. **Do not offer a partial/delta re-review that skips
+  reading or re-analyzing unchanged sections.** A section-scoped re-review
+  misses defects a full review finds, and saves little or nothing.
+  "Unchanged since last review" only means
   byte-identical to what was reviewed then — it says nothing about whether
-  that prior pass was itself complete, and no amount of "scan everything
-  anyway" instruction reliably overcame a model's attention naturally
-  narrowing to the flagged change.
+  that prior pass was itself complete, and attention narrows to the flagged
+  change even under an instruction to scan everything anyway.
 
-Read the target design document in full. Read CLAUDE.md to understand project context and standards.
+Read the target design document in full. This step needs the whole GDD: read it in ranges by its headings (found with the Grep tool: pattern `^#`, content mode), since a whole-file Read over 40 KB is refused. Read CLAUDE.md to understand project context and standards.
 
 **For cross-document facts, prefer the registry over sibling GDDs.** If
 `design/registry/entities.yaml` exists **and lists entries for this system**,
@@ -109,7 +125,7 @@ everything "implied". Do not glob-read all of `design/gdd/`.
 
 **Dependency graph validation:** For every system listed in the Dependencies section, use Glob to check whether its GDD file exists in `design/gdd/`. Flag any that don't exist yet — these are broken references that downstream authors will hit.
 
-**Lore/narrative alignment:** If `design/gdd/game-concept.md` or any file in `design/narrative/` exists, read it. Note any mechanical choices in this GDD that contradict established world rules, tone, or design pillars. Pass this context to `game-designer` in Phase 3b.
+**Lore/narrative alignment:** If `design/gdd/game-concept.md` (or, at `rigor: minimal`, the one-page brief `design/game-brief.md`) or any file in `design/narrative/` exists, read it. Note any mechanical choices in this GDD that contradict established world rules, tone, or design pillars. Pass this context to `game-designer` in Phase 3b.
 
 **Prior review check:** Check whether `design/gdd/reviews/[doc-name]-review-log.md` exists. If it does, read the most recent entry — note what verdict was given and what blocking items were listed. This session is a re-review; track whether prior items were addressed.
 
@@ -123,7 +139,9 @@ everything "implied". Do not glob-read all of `design/gdd/`.
 Bash: bash .claude/scripts/gdd-structure-check.sh [target-doc-path]
 ```
 
-It prints a `PRESENT:` list and, when applicable, an `ABSENT:` list. It reports
+It prints a `PRESENT:` list and, when applicable, an `ABSENT:` list and a
+`PLACEHOLDER:` list (present sections holding only `[To be designed]`: not yet
+written, so treat them as missing for the checklist). It reports
 **presence only** and makes no REQUIRED/ADVISORY judgment — that is Step 2b's
 job. It already accepts `## Detailed Design` as satisfying the `Detailed Rules`
 requirement, so do not flag that as missing.
@@ -159,11 +177,35 @@ spot-read any section the verdict actually turns on.
 - Are the rules precise enough for a programmer to implement without guessing?
 - Are there any "hand-wave" sections where details are missing?
 - Are performance implications considered?
+- Is every acceptance criterion independently testable? Flag each one that is
+  not, quoting it — "feels balanced", "works correctly", "performs well" are not
+  criteria — with a measurable rewrite. In `full` mode `qa-lead` also checks them
+  (Phase 3b); in `lean` and `solo` no specialist runs, so this main-review check
+  is the only one.
 
 **Cross-system consistency:**
 - Does this conflict with any existing mechanic?
 - Does this create unintended interactions with other systems?
 - Is this consistent with the game's established tone and pillars?
+
+**Registry values, wherever the GDD states them.** A value restated in a table,
+a catalogue entry or a variant note contradicts the registry as surely as one in
+Detailed Rules, and reading by section makes those bodies easy to skim. List the
+registry's entry names (`grep -E '^  - name:' design/registry/entities.yaml`),
+then search the whole target document once for all of them plus the numeric
+keys they carry, case-insensitive, writing each `_` as `[_ ]` so `goblin_scout`
+also matches "Goblin scouts":
+
+```
+grep -n -i -E 'goblin[_ ]scout|iron[_ ]sword|health|value[_ ]gold' [target-doc-path]
+```
+
+Check every line it prints against the registry, whatever section it sits in.
+A line that gives an entry a different value, even for one room, variant, level
+or exception, contradicts the owning GDD: list it under Required Before
+Implementation with its line number, this document's value and the registry's.
+With no registry entries, run the same search for the entities and values the
+related GDDs define.
 
 ---
 
@@ -193,7 +235,7 @@ Using the GDD **already loaded in Phase 1** — do not re-read it — identify e
 | Multiplayer, sync, replication | `network-programmer` |
 | Audio cues, music triggers | `audio-director` |
 | Performance, draw calls, memory | `performance-analyst` |
-| Engine-specific patterns or APIs | Primary engine specialist (`<engine>-specialist` from `engine.name` — Godot→`godot-specialist`, Unity→`unity-specialist`, Unreal→`unreal-specialist`, BabylonJS→`babylonjs-specialist`; fall back to the Primary line of `## Engine Specialists` in `technical-preferences.md`) |
+| Engine-specific patterns or APIs | Primary engine specialist (`<engine>-specialist` from `engine.name` — Godot→`godot-specialist`, Unity→`unity-specialist`, Unreal→`unreal-specialist`, Web→`lead-programmer`, BabylonJS→`babylonjs-specialist`; fall back to the Primary line of `## Engine Specialists` in `technical-preferences.md`) |
 | Acceptance criteria, test coverage | `qa-lead` |
 | Data schema, resource structure | `systems-designer` |
 | Any gameplay system | `game-designer` (always) |
@@ -204,19 +246,22 @@ These are the most common baselines — but not required for pure UI specs, audi
 
 ### Step 2 — Spawn all relevant specialists in parallel
 
-**CRITICAL: `Agent` in this skill spawns a SUBAGENT — a separate independent Claude session
-with its own context window. It is NOT task tracking. Do NOT simulate specialist
-perspectives internally. Do NOT reason through domain views yourself. You MUST issue
-actual `Agent` calls. A simulated review is not a specialist review.**
+`Agent` in this skill spawns a subagent: a separate Claude session with its own
+context window, not task tracking. Issue real `Agent` calls rather than writing the
+specialists' views yourself. A specialist starting from a fresh context catches what
+this session has already taken for granted, so a simulated review is not a
+specialist review.
 
-Issue all `Agent` calls simultaneously. Do NOT spawn one at a time.
+Issue all `Agent` calls simultaneously. Do not spawn one at a time.
 
 **Prompt each specialist adversarially:**
 > "Here is the GDD for [system] and the main review's structural findings so far.
 > Your job is NOT to validate this design — your job is to find problems.
 > Challenge the design choices from your domain expertise. What is wrong,
 > underspecified, likely to cause problems, or missing entirely?
-> Be specific and critical. Disagreement with the main review is welcome."
+> Be specific and critical. Disagreement with the main review is welcome.
+> Read the GDD by section: find the headings with the Grep tool (pattern `^#`,
+> content mode) and Read those ranges with offset and limit."
 
 **Additional instructions per agent type:**
 
@@ -230,12 +275,12 @@ Issue all `Agent` calls simultaneously. Do NOT spawn one at a time.
 
 After all specialists respond, spawn `creative-director` as the **senior reviewer**:
 - Provide: the GDD, all specialist findings, any disagreements between them
-- Ask: "Synthesise these findings. What are the most important issues? Do you agree with the specialists? What is your overall verdict on this design?"
-- The creative-director's synthesis becomes the **final verdict** in Phase 4.
+- Ask: "Synthesise these findings. What are the most important issues? Do you agree with the specialists? What is your overall verdict on this design — APPROVED, NEEDS REVISION or MAJOR REVISION NEEDED?"
+- The creative-director's synthesis becomes the **final verdict** in Phase 4, in this skill's verdict words — never a director-gate word such as READY or REJECT.
 
 ### Step 4 — Surface disagreements
 
-If specialists disagree with each other or with the creative-director, do NOT silently pick one view. Present the disagreement explicitly in Phase 4 so the user can adjudicate.
+If specialists disagree with each other or with the creative-director, do not silently pick one view. Present the disagreement explicitly in Phase 4 so the user can adjudicate.
 
 Mark every finding with its source: `[game-designer]`, `[economy-designer]`, `[creative-director]` etc.
 
@@ -254,17 +299,20 @@ separately as "advisory at `standard`" — do not list them as missing.]
 
 > **N is not 8 unless `workflow: full`.** The tier table earlier in this skill is
 > authoritative: 8 required at `full`, 5 at `standard` (+ Formulas when the system
-> defines numeric rules), 0 at `minimal`. Hardcoding `/8` here
-> reintroduces the tier confusion in the presentation layer after the logic
-> layer already handles it — reporting a `standard` project as "5/8 missing Player
-> Fantasy, Formulas, Tuning Knobs" warns about three sections that project's own
-> configuration says it does not need, which trains the reader to ignore the
-> review.
+> defines numeric rules), 0 at `minimal`. Do not hardcode `/8` here: reporting a
+> `standard` project as "5/8 missing Player Fantasy, Formulas, Tuning Knobs"
+> warns about three sections that project's own configuration says it does not
+> need, which trains the reader to ignore the review.
 
 ### Dependency Graph
 [List each declared dependency and whether its GDD file exists on disk]
 - ✓ enemy-definition-data.md — exists
 - ✗ loot-system.md — NOT FOUND (file does not exist yet)
+
+### Registry Values
+[The whole-document search from Phase 3: the terms searched, how many lines it
+printed, and each conflict with its line number. With nothing to search, say so:
+"No registry entries or related-GDD values: values not cross-checked."]
 
 ### Required Before Implementation
 [Numbered list — blocking issues only. Each item tagged with source agent.]
@@ -319,10 +367,16 @@ Use `AskUserQuestion` for ALL closing interactions. Never plain text.
 
 If APPROVED (first-pass, no revision needed), proceed directly to the systems-index widget, review-log widget, then the final closing widget. Do not show a separate "what to do" widget — the final closing widget covers next steps.
 
-If NEEDS REVISION or MAJOR REVISION NEEDED, options:
+If NOT ASSESSED, nothing was reviewed: offer no tracking update and go straight
+to the final closing widget, leading with the skill that produces the missing
+input (e.g. `/design-system [system]` for a GDD that does not exist).
+
+If NEEDS REVISION or MAJOR REVISION NEEDED, build the options from the findings:
 - `[A] Revise the GDD now — address blocking items together`
 - `[B] Stop here — revise in a separate session`
-- `[C] Accept as-is and move on (only if all items are advisory)`
+- `[C] Accept as-is and move on` — include only when every finding is advisory
+  (Required Before Implementation is empty). With any blocking item, offer [A]
+  and [B] only.
 
 **If user selects [A] — Revise now:**
 
@@ -334,7 +388,7 @@ After all revisions are complete, show a summary table (blocker → fix applied)
 - Note current context usage: if context is above ~50%, add: "(Recommended: /clear before re-review — this session has used X% context. A full re-review runs 5 agents and needs clean context.)"
 - Options:
   - `[A] Re-review in a new session — run /design-review [doc-path] after /clear`
-  - `[B] Accept revisions and mark Approved — update systems index, skip re-review`
+  - `[B] Accept revisions for now — mark In Review in the systems index; a re-review decides Approved`
   - `[C] Move to next system — /design-system [next-system] (#N in design order)`
   - `[D] Stop here`
 
@@ -355,7 +409,7 @@ If the review-log option is selected, append the same format as below. Execute b
 When the verdict is NEEDS REVISION or MAJOR REVISION NEEDED, use separate widgets as before:
 
 Use a second `AskUserQuestion`:
-- Prompt: "May I update `design/gdd/systems-index.md` to mark [system] as [In Review / Approved]?"
+- Prompt: "May I update `design/gdd/systems-index.md` to mark [system] as [Needs Revision / In Review]?" — `Needs Revision` (that exact string) while the revisions are outstanding, `In Review` once they are applied and await re-review. This prompt never offers `Approved`: a revision verdict is not an approval.
 - Options: `[A] Yes — update it` / `[B] No — leave it as-is`
 
 Use a third `AskUserQuestion`:
@@ -365,6 +419,7 @@ Use a third `AskUserQuestion`:
 If yes, append an entry in this format:
 ```
 ## Review — [YYYY-MM-DD] — Verdict: [APPROVED / NEEDS REVISION / MAJOR REVISION NEEDED]
+Review mode: [full / lean / solo] · Workflow: [full / standard / minimal]
 Scope signal: [S/M/L/XL]
 Specialists: [list]
 Blocking items: [count] | Recommended: [count]
@@ -373,19 +428,19 @@ Prior verdict resolved: [Yes / No / First review]
 Findings:
 - [BLOCKING] [section]: [one-line finding]
 - [RECOMMENDED] [section]: [one-line finding]
-[output of: Bash: bash .claude/scripts/review-receipts.sh hash "[target-doc-path]" — plus "design/registry/entities.yaml" if the registry file exists]
+[output of: Bash: bash .claude/scripts/review-receipts.sh hash "[target-doc-path]" "design/registry/entities.yaml" ".claude/skills/design-review/SKILL.md" [every other file this review read for cross-document facts: the related GDDs in design/gdd/, design/gdd/game-concept.md or design/game-brief.md, the design/narrative/ files] — a file that does not exist prints `not stamped, no such file` and is left out]
 ```
 
 Findings rules: one line per finding, named by the section it lives in;
 write `- none` when the verdict carried no findings. This is documentation
 for a human reader of the revision history, not a mechanism the skill reads
-back — a delta re-review that skipped re-analyzing unchanged sections was
-tried and reverted (see Phase 1) after measuring it against a full review.
+back.
 
 The hash line is the receipt Phase 1 reads on the next run to detect a
 byte-identical re-review — the one form of skip that's actually safe,
 because the input is provably the same, not merely believed to be adequately
-covered by a prior pass. Always include it, whatever the verdict — an
+covered by a prior pass. Stamp every file the review read: Phase 1's check
+compares each stamped file on the next run, whether or not it names it. Always include it, whatever the verdict — an
 unchanged document that previously FAILED review is exactly the case where
 skipping a redundant re-review saves the most (the prior findings stand
 verbatim).
@@ -397,12 +452,12 @@ verbatim).
 Once the systems-index and review-log widgets are answered, check project state and show one final `AskUserQuestion`:
 
 Before building options, read:
-- `design/gdd/systems-index.md` — find any system with Status: In Review or NEEDS REVISION (other than the one just reviewed)
+- `design/gdd/systems-index.md` — find any system with Status: In Review or Needs Revision (other than the one just reviewed). Read it by section: find the headings with the Grep tool (pattern `^#`, content mode) and Read those ranges with offset and limit.
 - Count `.md` files in `design/gdd/` (excluding game-concept.md, systems-index.md) to determine if `/review-all-gdds` is worth offering (≥2 GDDs)
 - Find the next system with Status: Not Started in design order
 
 Build the option list dynamically — only include options that are genuinely next:
-- `[_] Run /design-review [other-gdd-path] — [system name] is still [In Review / NEEDS REVISION]` (include if another GDD needs review)
+- `[_] Run /design-review [other-gdd-path] — [system name] is still [In Review / Needs Revision]` (include if another GDD needs review)
 - `[_] Run /consistency-check — verify this GDD's values don't conflict with existing GDDs` (always include if ≥1 other GDD exists)
 - `[_] Run /review-all-gdds — holistic design-theory review across all designed systems` (include if ≥2 GDDs exist)
 - `[_] Run /design-system [next-system] — next in design order` (always include, name the actual system)

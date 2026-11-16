@@ -18,10 +18,10 @@
 # desktop-focused"). Prose is in place and does not hold on its own. What was
 # missing was a step that reads back what was written.
 #
-# F1's root cause was subtler and is fixed elsewhere: `/setup-engine` is told to
-# write an `Installed at pin time` row into VERSION.md, and no VERSION.md had
-# such a row. There was no slot, so the step vanished leaving no trace. The row
-# now ships in all three reference files, and check 1 below reads it.
+# A subtler cause is handled elsewhere: `/setup-engine` writes an `Installed at
+# pin time` row into VERSION.md, and a VERSION.md with no such row leaves that
+# step no slot, so it vanishes without a trace. The row ships in all three
+# reference files, and check 1 below reads it.
 #
 # Babylon.js has no editor binary and no project.godot: its "installed version"
 # is node_modules/@babylonjs/core, its project file is package.json, and its
@@ -34,10 +34,17 @@
 # and always exits 0. The reader decides. A check that cannot run says so by
 # name — silence is never treated as agreement.
 
+case "${1:-}" in
+  -h|--help) sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+esac
+
 set -u
 export LC_ALL=C
 
-ROOT="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+if [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ -f "$CLAUDE_PROJECT_DIR/project.yaml" ]; then
+  ROOT="$CLAUDE_PROJECT_DIR"
+fi
 cd "$ROOT" || exit 0
 
 DIFFERS=0
@@ -72,6 +79,9 @@ summarise() {
   say "each line above names why that comparison could not be made."
   exit 0
 }
+
+# major.minor of the first version in $1, with Unity's 6000.N read as 6.N.
+vmm() { printf '%s' "$1" | grep -oE '[0-9]+\.[0-9]+' | head -1 | sed -E 's/^6000\./6./'; }
 
 say "=== project coherence ==="
 
@@ -116,6 +126,17 @@ pkg_has_script() {
   ' package.json
 }
 
+# Web: the bundler the project builds with (web-detect.sh's first bundler row),
+# so an existing project on webpack or Parcel is read as itself, not as Vite.
+WEB_BNAME=Vite; WEB_BPKG=vite
+if [ "$ENGINE_LC" = web ] && [ -f package.json ] && [ -f .claude/scripts/web-detect.sh ]; then
+  WEB_BROW="$(bash .claude/scripts/web-detect.sh --root . 2>/dev/null | awk -F'\t' '$1 == "bundler" { print $2 "\t" $3; exit }')"
+  case "$WEB_BROW" in
+    -*|"") ;;
+    *) WEB_BNAME="${WEB_BROW%%	*}"; WEB_BPKG="${WEB_BROW#*	}" ;;
+  esac
+fi
+
 # --- 1. VERSION.md carries a recorded installed-version probe -----------------
 if [ ! -f "$VERFILE" ]; then
   skipped "pinned-reference checks — $VERFILE does not exist"
@@ -124,8 +145,16 @@ else
             | sed -E 's/^\| \*\*Engine Version\*\* \| *//; s/ *\|$//')"
   INSTALLED_ROW="$(grep -E '^\| \*\*Installed at pin time\*\* \|' "$VERFILE" \
             | sed -E 's/^\| \*\*Installed at pin time\*\* \| *//; s/ *\|$//')"
+  # Web pins a toolchain, not one engine: engine.version is the bundler's, so the
+  # pin is the vite row of VERSION.md's pinned table, and the installed version
+  # is each project's own (check 3 reads node_modules).
+  if [ "$ENGINE_LC" = web ] && [ -z "$PINNED" ]; then
+    PINNED="$(grep -E '^\| `vite` \|' "$VERFILE" | head -1 | awk -F'|' '{ gsub(/ /, "", $3); print $3 }')"
+  fi
 
-  if [ -z "$INSTALLED_ROW" ]; then
+  if [ "$ENGINE_LC" = web ] && printf '%s' "$INSTALLED_ROW" | grep -qE '^PER PROJECT'; then
+    skipped "pinned-vs-installed at pin time — $VERFILE pins the template, and each web project installs its own versions; the installed-bundler check below reads them"
+  elif [ -z "$INSTALLED_ROW" ]; then
     differs "$VERFILE has no 'Installed at pin time' row. /setup-engine is required to write one; its absence means the probe result was never recorded, not that the versions agree."
   elif printf '%s' "$INSTALLED_ROW" | grep -qE 'NOT DETERMINED'; then
     skipped "pinned-vs-installed — $VERFILE records '$INSTALLED_ROW'. A probe that did not run has not established a match."
@@ -134,11 +163,17 @@ else
   fi
 
   # --- 2. project.yaml version vs the pinned reference ------------------------
-  if [ -z "$PINNED" ]; then
+  # Compared on major.minor, as check 3 does: engine.version is usually the full
+  # release (4.6.1, 6000.3.23f1) and the pin the series (Godot 4.6, Unity 6.3
+  # LTS). Unity numbers the same editor two ways -- 6000.3 is marketed as 6.3.
+  WANT2="$(vmm "$VERSION")"; GOT2="$(vmm "$PINNED")"
+  if [ "$ENGINE_LC" = web ] && [ "$WEB_BPKG" != vite ]; then
+    skipped "project.yaml version vs pinned reference — the project builds with $WEB_BNAME, and $VERFILE pins the template's Vite; engine.version is $WEB_BNAME's"
+  elif [ -z "$PINNED" ]; then
     skipped "project.yaml version vs pinned reference — no Engine Version row in $VERFILE"
   elif [ -z "$VERSION" ]; then
     skipped "project.yaml version vs pinned reference — project.yaml has no engine.version"
-  elif printf '%s' "$PINNED" | grep -qF "$VERSION"; then
+  elif printf '%s' "$PINNED" | grep -qF "$VERSION" || { [ -n "$WANT2" ] && [ "$WANT2" = "$GOT2" ]; }; then
     match "engine.version ($VERSION) agrees with $VERFILE ($PINNED)"
   else
     differs "engine.version is '$VERSION' but $VERFILE pins '$PINNED'. Agents consult the reference file, so they will answer for a version the project does not declare."
@@ -149,29 +184,124 @@ fi
 PROBE=""
 case "$ENGINE_LC" in
   godot)
-    if command -v godot >/dev/null 2>&1; then
-      PROBE="$(godot --version 2>/dev/null | head -1)"
+    # The executable named in commands.test (quoted, or its first word), else
+    # engine.path, else `godot` on PATH -- the same fallback order dev-story
+    # and smoke-check use. commands.* now carries the full editor path once
+    # /setup-engine has run, so a bare `command -v godot` alone reported "no
+    # Godot binary found on PATH" even on a correctly configured project.
+    # commands.test's program counts only when its file name says godot: a
+    # wrapper such as `bash run-tests.sh` is not the editor, and probing it
+    # compared bash's version with engine.version.
+    godot_named() {
+      case "$(printf '%s' "${1##*/}" | tr 'A-Z' 'a-z')" in *godot*) printf '%s' "$1" ;; esac
+    }
+    GEXE=""
+    for GCAND in \
+      "$(godot_named "$(yaml_block_value commands test | grep -oE '"[^"]*"' | head -1 | tr -d '"')")" \
+      "$(godot_named "$(yaml_block_value commands test | awk '{print $1}')")" \
+      "$(yaml_block_value engine path)" \
+      "godot"; do
+      [ -n "$GCAND" ] || continue
+      if command -v "$GCAND" >/dev/null 2>&1 || [ -x "$GCAND" ]; then
+        GEXE="$GCAND"
+        break
+      fi
+    done
+    [ -n "$GEXE" ] && PROBE="$("$GEXE" --version 2>/dev/null | head -1)"
+    ;;
+  unity)
+    # The editor named in commands.test (/setup-engine writes its full, quoted
+    # path), else the Hub folder for engine.version, picked by OS -- Unity's
+    # Hub installs to a different path on each. Never bare `Unity`: on PATH
+    # that is often Unity's separate CLI, which rejects -version with exit 2.
+    UEXE="$(yaml_block_value commands test | grep -oE '"[^"]*/Unity(\.exe)?"' | head -1 | tr -d '"')"
+    if [ -z "$UEXE" ] && [ -n "$VERSION" ]; then
+      case "$(uname -s)" in
+        Darwin) UEXE="/Applications/Unity/Hub/Editor/$VERSION/Unity.app/Contents/MacOS/Unity" ;;
+        Linux)  UEXE="$HOME/Unity/Hub/Editor/$VERSION/Editor/Unity" ;;
+        *)      UEXE="C:/Program Files/Unity/Hub/Editor/$VERSION/Editor/Unity.exe" ;;
+      esac
+    fi
+    [ -n "$UEXE" ] && [ -x "$UEXE" ] && PROBE="$("$UEXE" -version 2>/dev/null | head -1)"
+    ;;
+  unreal)
+    # Never start the editor to learn its version: UnrealEditor-Cmd has no
+    # -version flag (UE 5.8), so it opened the editor and ran until killed, and
+    # /smoke-check's step 0 waited for ever. Read the engine's own
+    # Engine/Build/Build.version instead, under the first engine root found:
+    # engine.path (/setup-engine writes the UE root there), the editor path in
+    # commands.test, the launcher folder for the .uproject's EngineAssociation,
+    # then UnrealEditor-Cmd on PATH. A candidate that is not itself a root is
+    # cut back to the folder above its last /Engine. A source build's
+    # EngineAssociation is a GUID with no folder to derive, so it adds nothing.
+    UASSOC="$(sed -n 's/.*"EngineAssociation"[[:space:]]*:[[:space:]]*"\([0-9][0-9.]*\)".*/\1/p' ./*.uproject 2>/dev/null | head -1)"
+    ULAUNCH=""
+    if [ -n "$UASSOC" ]; then
+      case "$(uname -s)" in
+        Darwin) ULAUNCH="/Users/Shared/Epic Games/UE_$UASSOC" ;;
+        Linux)  ;;
+        *)      ULAUNCH="C:/Program Files/Epic Games/UE_$UASSOC" ;;
+      esac
+    fi
+    UROOT=""
+    for UCAND in \
+      "$(yaml_block_value engine path)" \
+      "$(yaml_block_value commands test | grep -oE '"[^"]*UnrealEditor[^"]*"' | head -1 | tr -d '"')" \
+      "$ULAUNCH" \
+      "$(command -v UnrealEditor-Cmd 2>/dev/null)"; do
+      [ -n "$UCAND" ] || continue
+      UCAND="$(printf '%s' "$UCAND" | tr '\\' '/')"
+      for UTRY in "$UCAND" "$(printf '%s' "$UCAND" | sed -E 's#^(.*)/Engine(/.*)?$#\1#')"; do
+        if [ -f "$UTRY/Engine/Build/Build.version" ]; then UROOT="$UTRY"; break 2; fi
+      done
+    done
+    if [ -n "$UROOT" ]; then
+      UBV="$(tr -d '\r\n' < "$UROOT/Engine/Build/Build.version")"
+      UMAJ="$(printf '%s' "$UBV" | grep -oE '"MajorVersion"[[:space:]]*:[[:space:]]*[0-9]+' | grep -oE '[0-9]+$')"
+      UMIN="$(printf '%s' "$UBV" | grep -oE '"MinorVersion"[[:space:]]*:[[:space:]]*[0-9]+' | grep -oE '[0-9]+$')"
+      UPAT="$(printf '%s' "$UBV" | grep -oE '"PatchVersion"[[:space:]]*:[[:space:]]*[0-9]+' | grep -oE '[0-9]+$')"
+      [ -n "$UMAJ" ] && [ -n "$UMIN" ] && PROBE="$UMAJ.$UMIN${UPAT:+.$UPAT} (Engine/Build/Build.version)"
     fi
     ;;
-  unity)   command -v Unity >/dev/null 2>&1 && PROBE="$(Unity -version 2>/dev/null | head -1)" ;;
-  unreal)  command -v UnrealEditor-Cmd >/dev/null 2>&1 && PROBE="$(UnrealEditor-Cmd -version 2>/dev/null | head -1)" ;;
+  web)
+    # engine.version holds the bundler's version (Vite for a new project), so
+    # the installed one is the version node_modules/<bundler>/package.json records.
+    if [ "$WEB_BPKG" != - ] && [ -f "node_modules/$WEB_BPKG/package.json" ]; then
+      WV="$(grep -m1 -oE '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "node_modules/$WEB_BPKG/package.json" | sed -E 's/.*"([^"]*)"$/\1/')"
+      [ -n "$WV" ] && PROBE="$WV (node_modules/$WEB_BPKG/package.json)"
+    fi
+    ;;
   babylonjs) [ -n "$BJS_INSTALLED" ] && PROBE="@babylonjs/core $BJS_INSTALLED" ;;
 esac
 
 if [ -z "$PROBE" ] && [ "$ENGINE_LC" = "babylonjs" ]; then
   skipped "declared version vs installed package — no node_modules/@babylonjs/core/package.json (run npm install). A probe that could not run has not established absence."
 elif [ -z "$PROBE" ]; then
-  skipped "declared version vs installed binary — no $ENGINE binary found on PATH. A probe that could not run has not established absence."
+  if [ "$ENGINE_LC" = "unity" ]; then
+    skipped "declared version vs installed binary — no Unity editor at the path in commands.test or in the Hub folder for engine.version. A probe that could not run has not established absence."
+  elif [ "$ENGINE_LC" = "godot" ]; then
+    skipped "declared version vs installed binary — no Godot executable found (commands.test, engine.path, PATH). A probe that could not run has not established absence."
+  elif [ "$ENGINE_LC" = "web" ]; then
+    if [ "$WEB_BPKG" = - ]; then
+      skipped "declared version vs installed bundler — $WEB_BNAME has no package in node_modules to read. A probe that could not run has not established absence."
+    else
+      skipped "declared version vs installed bundler — no node_modules/$WEB_BPKG/package.json (the dependencies are not installed). A probe that could not run has not established absence."
+    fi
+  elif [ "$ENGINE_LC" = "unreal" ]; then
+    skipped "declared version vs installed engine — no readable Engine/Build/Build.version under engine.path, the editor in commands.test, the launcher folder for the .uproject's EngineAssociation, or UnrealEditor-Cmd on PATH. A probe that could not run has not established absence."
+  else
+    skipped "declared version vs installed binary — no $ENGINE binary found on PATH. A probe that could not run has not established absence."
+  fi
 elif [ -z "$VERSION" ]; then
   skipped "declared version vs installed binary — project.yaml has no engine.version"
 else
   # Compare on major.minor: a patch difference is normal and not worth a flag.
-  WANT="$(printf '%s' "$VERSION" | grep -oE '^[0-9]+\.[0-9]+')"
-  GOT="$(printf '%s' "$PROBE"  | grep -oE '[0-9]+\.[0-9]+' | head -1)"
+  WANT="$(vmm "$VERSION")"
+  GOT="$(vmm "$PROBE")"
   if [ -n "$WANT" ] && [ "$WANT" = "$GOT" ]; then
     match "engine.version $VERSION matches the installed binary ($PROBE)"
   else
-    differs "engine.version is '$VERSION' but the binary on PATH is '$PROBE'. Build, test and smoke commands all target the declared version."
+    differs "engine.version is '$VERSION' but the installed binary reports '$PROBE'. Build, test and smoke commands all target the declared version."
   fi
 fi
 
@@ -291,12 +421,20 @@ else
     fi
   done
 
-  RUNNER="$(printf '%s' "$TEST_CMD" | grep -oE '[A-Za-z0-9_/.-]+\.(gd|cs|py|sh)' | head -1)"
+  # Godot names its runner as res://addons/gdUnit4/bin/GdUnitCmdTool.gd. Match the
+  # res:// prefix and strip it: a class that stops at the colon checked
+  # //addons/... and reported a present runner as missing.
+  RUNNER="$(printf '%s' "$TEST_CMD" | grep -oE '(res://)?[A-Za-z0-9_/.-]+\.(gd|cs|py|sh)' | head -1)"
+  RUNNER="${RUNNER#res://}"
   if [ -n "$RUNNER" ]; then
     if [ -f "$RUNNER" ]; then
       match "commands.test runner exists ($RUNNER)"
     else
-      differs "commands.test is '$TEST_CMD' but '$RUNNER' does not exist. At qa.level: minimal nothing ever creates it, so this command is unrunnable as written."
+      case "$RUNNER" in
+        addons/gdUnit4/*) HINT=" gdUnit4 is not installed at addons/gdUnit4/ (capital U) — see /test-setup." ;;
+        *)                HINT="" ;;
+      esac
+      differs "commands.test is '$TEST_CMD' but '$RUNNER' does not exist, so this command cannot run as written.$HINT"
     fi
   fi
 fi

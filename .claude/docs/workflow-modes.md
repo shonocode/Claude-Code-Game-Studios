@@ -9,10 +9,10 @@ this document instead of embedding the tier tables inline.
 sections `modes.workflow` and `workflow_overrides` are the source of
 truth for behavior. This document is the implementation pattern.
 
-> **Do not read `effects-map.md` during a skill run.** It is ~2,150 lines
-> (~110 KB) — about five times the size of everything CLAUDE.md loads per
-> session combined — and it is a reference for *authoring and changing the
-> spec*, not a runtime input. **This document is self-sufficient** for resolving
+> **Do not read `effects-map.md` during a skill run.** It is many times the
+> size of everything CLAUDE.md loads per session combined — and it is a
+> reference for *authoring and changing the spec*, not a runtime input.
+> **This document is self-sufficient** for resolving
 > the tier and applying it: the resolution chain, the three tiers, the required
 > sections, and the override rules are all here. If you hit a case this document
 > genuinely does not cover, read only the one `effects-map.md` section for the
@@ -50,8 +50,8 @@ its fallback will ignore `rigor: minimal` and `rigor: full` entirely.
 
 ### What `<system>` is — one derivation, everywhere
 
-**`<system>` is the GDD filename stem**: `design/gdd/hammer-heat-system.md` →
-`hammer-heat-system`. That is the key to write under
+**`<system>` is the GDD filename stem**: `design/gdd/forge-heat-system.md` →
+`forge-heat-system`. That is the key to write under
 `workflow_overrides.system_overrides`, and every skill must derive it the same
 way.
 
@@ -61,18 +61,18 @@ from it in preference to the stem.
 
 > **Why this is stated here rather than per skill.** Reading *"the `[system]`
 > segment of its `TR-[system]-NNN` ID (else its `design/gdd/` path)"* — TR-ID
-> **first** — is the wrong order. A system whose GDD is `hammer-heat-system.md` and
-> whose requirements are `TR-heat-001` then had **two different override keys
-> depending on whether a registry entry existed**, and the documented remedy for
-> a missing GDD section — "set
-> `workflow_overrides.system_overrides.hammer-heat-system: full`" — was looked up
-> under `heat`, found nothing, and continued at the project tier **silently**.
-> The escape hatch existed and could not be reached.
+> **first** — is the wrong order. A system whose GDD is `forge-heat-system.md` and
+> whose requirements are `TR-forge-001` would then have **two different override
+> keys depending on whether a registry entry existed**, and the documented remedy
+> for a missing GDD section — "set
+> `workflow_overrides.system_overrides.forge-heat-system: full`" — would be looked
+> up under `forge`, find nothing, and continue at the project tier **silently**.
+> The escape hatch would exist and could not be reached.
 
 **A key that matches no system is an error, not a no-op.** If
 `workflow_overrides.system_overrides` contains a key that resolves to no GDD stem
 in `design/gdd/`, say so — naming the unmatched key and the stems available.
-Silently ignoring it is how the above went unnoticed.
+Silently ignoring it would leave an override that does nothing, unnoticed.
 
 > **Checked where GDDs are expected to already exist — not by the skill that
 > writes them.** `/gate-check` is the single implementing site (see
@@ -126,11 +126,11 @@ the expansion.) Per-system overrides read via
 |------|----------------|---------------------|----------|
 | `full` | High | All 8 GDD sections per system, full architecture, all ADRs, art bible, UX specs per screen | Teams, commercial titles, learning the full pipeline |
 | `standard` | Balanced | 5 GDD sections per system, one architecture doc, critical ADRs, game concept, systems index | Projects that outgrew a brief - several interacting systems, or a design someone else implements |
-| `minimal` | Low | One-page `design/game-brief.md` + engine choice (its build-order field is the plan — no separate sprint plan) | **Default.** Jam projects, small scope, design already in your head |
+| `minimal` | Low | One-page `design/game-brief.md`; an engine before stories (its build-order field is the plan — no separate sprint plan) | **Default.** Jam projects, small scope, design already in your head |
 
 **Default**: `minimal` (the rationale block above `_yaml_helper_defaults` in
 `.claude/hooks/yaml-helper.sh` carries the reasoning and the ordering
-constraint). **Set by**: `/start`, `/settings`. **Locked to
+constraint). **Set by**: `/start` (via `modes.rigor`), `/project-settings`. **Locked to
 `project.yaml`** (not locally overridable — divergence would change which
 artifacts must exist on disk).
 
@@ -139,16 +139,18 @@ artifacts must exist on disk).
 > `gate-check` enforces and what completeness checks validate — never what the
 > user can invoke.
 
-> **`minimal` floor.** Even at minimal, engine choice and a filled
-> **`design/game-brief.md`** are required before code starts — the brief's
+> **`minimal` floor.** Even at minimal, a filled **`design/game-brief.md`** is
+> required before code starts, and an engine before the first story — the brief's
 > build-order field is the plan, so there is no separate `sprint-plan` step.
-> Everything else can be skipped.
+> Everything else can be skipped. The playable browser game `/prototype` builds
+> needs no engine: it writes the brief first, and growing the game sets the engine
+> to Web.
 
 > **"Game brief" is a real artifact at `minimal`: `design/game-brief.md`.**
 > `/brainstorm` writes it from the one-page template
 > (`.claude/docs/templates/game-brief.md`) when the effective tier is `minimal`,
 > in place of the full-length `design/gdd/game-concept.md` it writes at
-> `standard`/`full`. The two are distinct files for distinct tiers: any check,
+> `standard`/`full`. The browser game `/prototype` builds writes it at any tier. The two are distinct files for distinct tiers: any check,
 > gate, or glob for the `minimal` design artifact must target
 > **`design/game-brief.md`**; `game-concept.md` remains the `standard`/`full`
 > concept doc.
@@ -266,13 +268,13 @@ place to look, not `effects-map.md`.
 
 **Support** — adjust "what's missing" expectations so optional docs aren't
 flagged as gaps: `project-stage-detect`, `adopt`, `reverse-document`,
-`propagate-design-change`, `help`.
+`propagate-design-change`, `next-step`.
 
 ---
 
 ## Workflow Change Mid-Project
 
-When `workflow` changes via `/settings`, emit an informational note:
+When `workflow` changes via `/project-settings`, emit an informational note:
 
 > "Workflow changed from [old] to [new]. Run `/content-audit` to see what's now
 > required or extra. No automatic migration — existing files stay in place."

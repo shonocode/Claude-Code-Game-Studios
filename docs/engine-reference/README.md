@@ -6,15 +6,18 @@ has a cutoff date** and game engines update frequently.
 
 ## Why This Exists
 
-Claude's training data has a knowledge cutoff (currently May 2025). Game engines
-like Godot, Unity, and Unreal — and web libraries like Babylon.js — ship updates that introduce breaking API changes,
+Claude's training data has a knowledge cutoff (May 2025 is the floor; a newer
+model may know more). Game engines
+like Godot, Unity, Unreal and Babylon.js, and the web toolchain (Vite, TypeScript and the
+game libraries), ship updates that introduce breaking API changes,
 new features, and deprecated patterns. Without these reference files, agents will
 suggest outdated code.
 
 ## Structure
 
-Each engine gets its own directory, named by lowercasing `engine.name` in
-`project.yaml` — `godot/`, `unity/`, `unreal/`, `babylonjs/` (from `BabylonJS`):
+Each engine gets its own directory: `godot/`, `unity/`, `unreal/`, `web/` and
+`babylonjs/` (from `BabylonJS`), named as `engine.name` in lower case. The web folder pins a toolchain rather
+than one engine, and has a page per library instead of `modules/`:
 
 ```
 <engine>/
@@ -22,7 +25,13 @@ Each engine gets its own directory, named by lowercasing `engine.name` in
 ├── breaking-changes.md     # API changes between versions, organized by risk level
 ├── deprecated-apis.md      # "Don't use X → Use Y" lookup tables
 ├── current-best-practices.md  # New practices not in model training data
-└── modules/                # Per-subsystem quick references (~150 lines max each)
+├── PLUGINS.md              # Unity and Unreal only: index of the plugin pages
+├── plugins/                # Unity and Unreal only: one page per plugin
+│   └── ...
+├── PACKAGES.md             # Babylon.js only: index of the npm package pages
+├── packages/               # Babylon.js only: one page per @babylonjs/* package
+│   └── ...
+└── modules/                # Per-subsystem quick references, one subsystem per file
     ├── rendering.md
     ├── physics.md
     └── ...
@@ -43,7 +52,7 @@ Engine-specialist agents are instructed to:
 
 - After upgrading the engine version
 - When the LLM model is updated (new knowledge cutoff)
-- After running `/refresh-docs` (if available)
+- After running `/setup-engine refresh`
 - When you discover an API the model gets wrong
 
 ### How to Update
@@ -58,7 +67,7 @@ Engine-specialist agents are instructed to:
 ### Quality Rules
 
 - Every file must have a "Last verified: YYYY-MM-DD" date
-- Keep module files under 150 lines (context budget)
+- One subsystem per module file; there is no fixed length
 - Include code examples showing correct/incorrect patterns
 - Link to official documentation URLs for verification
 - Only document things that differ from the model's training data

@@ -3,11 +3,13 @@ name: retrospective
 description: "Sprint or milestone retrospective from completed work, velocity, blockers. Actionable insights for the next iteration."
 argument-hint: "[sprint-N|milestone-name]"
 user-invocable: true
-allowed-tools: Read, Glob, Grep, Write, Bash, AskUserQuestion, Bash(bash "*/.claude/skills/retrospective/../../hooks/yaml-helper.sh" resolve_config *)
+allowed-tools: Read, Glob, Grep, Write, AskUserQuestion, Bash(bash "*/.claude/skills/retrospective/../../hooks/yaml-helper.sh" resolve_config *), Bash(git log *)
 model: sonnet
 ---
 
-!`bash "${CLAUDE_SKILL_DIR}/../../hooks/yaml-helper.sh" resolve_config --keys automation`
+!`bash "${CLAUDE_SKILL_DIR}/../../hooks/yaml-helper.sh" resolve_config --keys automation,workflow,qa.level`
+
+# Retrospective
 
 
 
@@ -33,11 +35,10 @@ not a filled-in report.** Check first, and stop if the check fails.
 
 **A verdict of `NOT ASSESSED` is a success.** It is the correct, useful answer to
 "what does the data say?" when there is no data. The failure mode this prevents is
-specific and has been observed in practice: report templates whose verdict
-enum had no "could not run" state produced **false clean passes** — an asset audit
-returning COMPLIANT on a project with no assets and no standards, and a
-performance profile reporting ">99% headroom against a 16.67ms budget" with zero
-profiler data and no budget ever set.
+specific: a report whose verdict enum has no "could not run" state produces
+**false clean passes** — an asset audit returning COMPLIANT on a project with no
+assets and no standards, or a performance profile reporting ">99% headroom against
+a 16.67ms budget" with zero profiler data and no budget ever set.
 
 **Absence of evidence is never evidence of absence.** A scan that finds no
 matches because there are no files to scan has not verified anything. Say which of
@@ -66,7 +67,7 @@ If a matching file is found, use `AskUserQuestion`:
   - `[B] Start fresh — generate a new retrospective (archive the old one)`
 
 If [A]: read the existing file and carry its content forward, revising sections with new data.
-If [B]: continue to Phase 2 with a blank slate. Before writing the new file, rename the existing one with a `-archived-[date]` suffix.
+If [B]: continue to Phase 2 with a blank slate. Before writing the new file, rename the existing one with a `-archived-[date]` suffix. That rename is a write too: it happens in Phase 5, only once the ask there — which names it — is approved.
 
 ---
 
@@ -81,17 +82,28 @@ Read the sprint or milestone plan from the appropriate location:
 
 **If the file does not exist or is empty**, output:
 
-> "No sprint data found for [sprint/milestone]. Run `/sprint-status` to generate
-> sprint data first, or provide the sprint details manually."
+> "No sprint data found for [sprint/milestone]. Run `/sprint-plan new` to create a
+> sprint (`/sprint-status` only reads one), or provide the sprint details manually."
 
-Then use `AskUserQuestion` to present two options:
+At `workflow: minimal` (resolved above) there are no sprints: offer to look back over the stories
+closed so far instead (`production/epics/*/story-*.md` with `Status: Complete`).
+At `qa.level: minimal` (resolved above) tests are waived, so a story closed
+without one is not a finding; a Visual/Feel or UI story closed without its
+retained screenshot still is.
+
+Then use `AskUserQuestion` to present these options ([C] only at `workflow: minimal`):
 
 - **[A] Provide data manually** — ask the user to paste or describe the sprint
   tasks, dates, and outcomes; use that as the source of truth for the retrospective.
 - **[B] Stop** — abort the skill. Verdict: **BLOCKED** — no sprint data available.
+- **[C] Look back over the closed stories** — use the stories with
+  `Status: Complete` as the record of what was done.
 
 If the user chooses [A], collect the data and continue to Phase 3 using what they provide.
 If the user chooses [B], stop here.
+If the user chooses [C], read those stories and continue to Phase 3. Sections that
+need sprint data (planned vs actual, velocity, carryover, estimation accuracy)
+are `NOT ASSESSED — NO DATA`.
 
 Extract: planned tasks, estimated effort, owners, and goals.
 
@@ -115,6 +127,10 @@ Scan for completed and incomplete tasks by comparing the plan against actual del
 - Tasks added mid-sprint (unplanned work)
 - Tasks removed or descoped
 
+Every story with `status: blocked` in `production/sprint-status.yaml` goes under
+Blockers Encountered, with its `blocker` field as the Blocker, and gets an action
+item in Action Items for Next Iteration.
+
 Scan the codebase for TODO/FIXME trends:
 
 - Count current TODO/FIXME/HACK comments
@@ -126,6 +142,10 @@ Read previous retrospectives (if any) from `production/retrospectives/` to check
 - Were previous action items addressed?
 - Are the same problems recurring?
 - How has velocity trended?
+
+With no earlier sprint or retrospective, Velocity Trend keeps only the current
+sprint's row and reads `NOT ASSESSED — NO DATA`, and Previous Action Items
+Follow-Up is that one line — no invented earlier rows, no empty table.
 
 ---
 
@@ -156,7 +176,7 @@ Generated: [Date]
 | [N-1] | [X] | [Y] | [Z%] |
 | [N] (current) | [X] | [Y] | [Z%] |
 
-**Trend**: [Increasing / Stable / Decreasing]
+**Trend**: [Increasing / Stable / Decreasing — or `NOT ASSESSED — NO DATA` with no earlier sprint to compare]
 [One sentence explaining the trend]
 
 ### What Went Well
@@ -231,6 +251,10 @@ Present the retrospective and top findings to the user (completion rate, velocit
 
 Ask: "May I write this to `production/retrospectives/retro-sprint-[N]-[date].md`?" (or `production/retrospectives/retro-[milestone-name]-[date].md` for milestone retrospectives)
 
+After Start fresh in Phase 1b, the same ask also names the rename: "…and rename
+`[old file]` to `[old file name]-archived-[date].md`?" On yes, rename first, then
+write; on no, neither happens.
+
 If yes, write the file, creating the `production/retrospectives/` directory if needed. Verdict: **COMPLETE** — retrospective saved.
 
 If no, stop here. Verdict: **BLOCKED** — user declined write.
@@ -239,7 +263,11 @@ If no, stop here. Verdict: **BLOCKED** — user declined write.
 
 ## Phase 6: Next Steps
 
-Use `AskUserQuestion`:
+At `workflow: minimal` (resolved above), which has no sprints, skip this question:
+point to the retrospective file and say its action items go into the brief's build
+order.
+
+Otherwise, use `AskUserQuestion`:
 - Prompt: "Retrospective complete. The action items and velocity data are ready. Would you like to start sprint planning now with this data pre-loaded?"
 - Options:
   - `[A] Yes — open sprint planning with retro action items and velocity delta pre-populated`

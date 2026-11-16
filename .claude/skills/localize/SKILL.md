@@ -3,7 +3,7 @@ name: localize
 description: "Localization pipeline — find hardcoded strings, extract string tables, cultural review, VO, RTL, enforce string freeze."
 argument-hint: "[scan|extract|validate|status|brief|cultural-review|vo-pipeline|rtl-check|freeze|qa]"
 user-invocable: true
-allowed-tools: Read, Glob, Grep, Write, Bash, Agent, AskUserQuestion, Bash(bash "*/.claude/skills/localize/../../hooks/yaml-helper.sh" resolve_config *)
+allowed-tools: Read, Glob, Grep, Write, Edit, Agent, AskUserQuestion, Bash(bash "*/.claude/skills/localize/../../hooks/yaml-helper.sh" resolve_config *)
 model: sonnet
 ---
 
@@ -112,6 +112,7 @@ String freeze: [Active / Not yet called / Lifted]
 | Locale | Total | Translated | Missing | Stale | Coverage |
 |--------|-------|-----------|---------|-------|----------|
 | en (source) | [N] | [N] | [N] | [N] | [N]% |
+| [locale] | [N] | [N] | [N] | [N] | [X]% |
 
 > **Every cell above is a count you must take from the string table — including
 > the source row.** Do not pre-fill the source locale as `100%`: that asserts a
@@ -120,7 +121,6 @@ String freeze: [Active / Not yet called / Lifted]
 > is absent, the whole status output is
 > **`NOT ASSESSED — no string table found`**, not a matrix of zeros with a
 > confident source row.
-| [locale] | [N] | [N] | [N] | [N] | [X]% |
 
 ### Issues
 - [N] hardcoded strings found in source code (run /localize scan)
@@ -140,7 +140,9 @@ Generate a translator context briefing document. This document is sent to the
 external translation team or localisation vendor alongside the string table export.
 
 Read:
-- `design/gdd/` — extract game genre, tone, setting, character names
+- `design/gdd/` — extract game genre, tone, setting, character names. Read the
+  GDDs by section: find the headings you need with the Grep tool (pattern `^#`,
+  content mode) and Read those ranges with offset and limit.
 - `assets/data/strings/strings-en.json` — the source string table
 - Any existing lore or narrative documents in `design/narrative/`
 
@@ -348,7 +350,7 @@ Pre-Freeze Checklist
 ```
 
 Use `AskUserQuestion`:
-- Prompt: "Are all items above confirmed? Calling string freeze locks the source table."
+- Prompt: "Call string freeze now? This writes `production/localization/freeze-status.md` (Status: ACTIVE) and locks the source table."
 - Options: `[A] Yes — call string freeze now` / `[B] No — I still have strings to add`
 
 If [A]: Write `production/localization/freeze-status.md`:
@@ -367,11 +369,11 @@ If [A]: Write `production/localization/freeze-status.md`:
 
 ### freeze lift
 
-If argument includes `lift`: update `freeze-status.md` Status to `LIFTED`, record the reason and date. Warn: "Lifting the freeze requires re-translation of all modified strings. Notify the translation team."
+If argument includes `lift`: ask "May I update `freeze-status.md` to LIFTED?", then set its Status to `LIFTED` and record the reason and date. Warn: "Lifting the freeze requires re-translation of all modified strings. Notify the translation team."
 
 ### freeze check (auto-integrated into extract)
 
-When `extract` mode finds new or modified strings and `freeze-status.md` shows Status: ACTIVE — append the new keys to `## Post-Freeze Changes` and warn:
+When `extract` mode finds new or modified strings and `freeze-status.md` shows Status: ACTIVE — name `freeze-status.md` in extract's own "May I write" question, append the new keys to its `## Post-Freeze Changes` on approval, and warn:
 > "⚠️ String freeze is active. [N] new/modified strings have been added. These are freeze violations. Notify your localization vendor before proceeding."
 
 ---
@@ -402,7 +404,7 @@ Output a QA verdict per locale:
 ```
 ## Localization QA Verdict — [Locale]
 
-**Status**: PASS / PASS WITH CONDITIONS / FAIL
+**Status**: PASS / PASS WITH CONDITIONS / NOT ASSESSED / FAIL
 **Reviewed by**: localization-lead
 **Date**: [date]
 
@@ -420,9 +422,17 @@ Output a QA verdict per locale:
 [ ] Producer approves shipping [Locale]
 ```
 
+First match wins: **FAIL** if any BLOCKING finding is open; else **NOT ASSESSED**
+if a check could not run — the checks are playthrough-based, so a locale nobody
+has played in-game (or whose translations were not delivered) cannot pass on the
+string tables alone; name each check that did not run; else **PASS WITH
+CONDITIONS** if conditions remain; else **PASS**. NOT ASSESSED outranks both
+pass values — an unplayed locale has not passed — and ranks below FAIL, so an
+open BLOCKING finding is never buried behind it.
+
 Ask: "May I write this localization QA report to `production/localization/loc-qa-[locale]-[date].md`?"
 
-**Gate integration**: The Polish → Release gate requires a PASS or PASS WITH CONDITIONS verdict for every locale being shipped. A FAIL blocks release for that locale only — other locales may still proceed if their QA passes.
+**Gate integration**: At `workflow: full`, the Polish → Release gate requires a PASS or PASS WITH CONDITIONS verdict for every translated locale being shipped (recommended at `standard`; dropped at `minimal`). A FAIL blocks release for that locale only — other locales may still proceed if their QA passes. A NOT ASSESSED locale has not passed: its QA did not run.
 
 ---
 
@@ -453,4 +463,4 @@ Ask: "May I write this localization QA report to `production/localization/loc-qa
 /localize qa              → full localization QA pass
 ```
 
-After `qa` returns PASS for all shipping locales, include the QA report path when running `/gate-check release`.
+After `qa` returns PASS or PASS WITH CONDITIONS for every translated locale you ship, include the QA report paths when running `/gate-check release`.

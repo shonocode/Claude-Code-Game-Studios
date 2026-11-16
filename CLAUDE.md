@@ -5,8 +5,8 @@ Each agent owns a specific domain, enforcing separation of concerns and quality.
 
 ## Technology Stack
 
-- **Engine**: [CHOOSE: Godot 4 / Unity / Unreal Engine 5 / Babylon.js]
-- **Language**: [CHOOSE: GDScript / C# / C++ / Blueprint / TypeScript]
+- **Engine**: [CHOOSE: Web / Godot 4 / Unity / Unreal Engine 5 / Babylon.js]
+- **Language**: [CHOOSE: TypeScript / GDScript / C# / C++ / Blueprint]
 - **Version Control**: Git with trunk-based development
 - **Build System**: [SPECIFY after choosing engine]
 - **Asset Pipeline**: [SPECIFY after choosing engine]
@@ -20,13 +20,11 @@ Each agent owns a specific domain, enforcing separation of concerns and quality.
 
 ## Engine Version Reference
 
-<!-- ENGINE-REFERENCE-IMPORT: the line below is engine-specific. /setup-engine
-     rewrites it to @docs/engine-reference/<engine>/VERSION.md for the chosen
-     engine, so a Unity, Unreal or Babylon.js project stops loading the Godot reference every
-     session. It defaults to Godot (the template's example engine); skills that
-     need the pinned version read docs/engine-reference/<engine>/VERSION.md on
-     demand regardless of this import. -->
-@docs/engine-reference/godot/VERSION.md
+<!-- ENGINE-REFERENCE-IMPORT: the line under this comment is engine-specific,
+     and there is none until an engine is set. /setup-engine, the grow's record
+     step and /project-settings (engine.name) write
+     @docs/engine-reference/<engine>/VERSION.md here for the chosen engine. Skills
+     that need the pinned version read that file on demand either way. -->
 
 
 ## Technical Preferences
@@ -36,7 +34,7 @@ naming, platform, performance, modes. Skills resolve it via `resolve_config`
 (see `.claude/docs/config-resolution.md`).
 
 `.claude/docs/technical-preferences.md` is the **legacy fallback**, read on demand
-when a key is absent from `project.yaml`. It is no longer imported here: before
+when a key is absent from `project.yaml`. It is not imported here: before
 `/setup-engine` runs it is almost entirely `[TO BE CONFIGURED]` placeholders, and
 after it runs `project.yaml` holds the real values.
 
@@ -50,14 +48,20 @@ after it runs `project.yaml` holds the real values.
 Every task follows: **Question -> Options -> Decision -> Draft -> Approval**
 
 - Agents MUST ask "May I write this to [filepath]?" before using Write/Edit tools
+  (exempt: `active.md` appends, agent memory, a subagent's new file at the path
+  its orchestrating skill named; see `.claude/rules/agent-memory.md`)
 - Agents MUST show drafts or summaries before requesting approval
 - Multi-file changes require explicit approval for the full changeset
 - No commits without user instruction
+- A skipped or dismissed question is not an answer: act on nothing, re-ask in
+  plain text and wait
+- Started outside this file's folder? Warn first: hooks, deny rules and the
+  ask-first mode load only when Claude Code starts here
 
 See `docs/COLLABORATIVE-DESIGN-PRINCIPLE.md` for full protocol and examples.
 
-> **First session?** If the project has no engine configured and no game concept,
-> run `/start` to begin the guided onboarding flow.
+> **First session?** Say "make me a game" (`/prototype`), or run `/start` to begin
+> the guided onboarding flow.
 
 ## Coding Standards
 

@@ -11,16 +11,19 @@
 # project, not this one. Resolving to the script's own location first would
 # override them. So, in order:
 #   1. cwd holds project.yaml   -> cwd   (a project root)
-#   2. cwd holds .claude/       -> cwd   (a project root not yet configured)
-#   3. CLAUDE_PROJECT_DIR       -> that  (populated in the hook environment)
+#   2. cwd holds .claude/       -> cwd   (a project root not yet configured),
+#      unless cwd is itself named .claude: a stray .claude/.claude/ would
+#      make .claude/ a root, and the hooks would write .claude/production/
+#   3. CLAUDE_PROJECT_DIR       -> that  (populated in the hook environment),
+#      unless it names a .claude folder, for the same reason as rule 2
 #   4. this script's location   -> <root>/.claude/hooks/../.. by construction
 # Rule 4 always works and needs no environment at all; rules 1-2 stop it from
 # overriding a caller that legitimately means somewhere else.
 #
 # NOT an upward search: that resolves a nested project to its parent's config.
-if [ -f "project.yaml" ] || [ -d ".claude" ]; then
+if [ -f "project.yaml" ] || { [ -d ".claude" ] && [ "${PWD##*/}" != ".claude" ]; }; then
   CCGS_ROOT="$PWD"
-elif [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ -d "${CLAUDE_PROJECT_DIR}" ]; then
+elif [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ -d "${CLAUDE_PROJECT_DIR}" ] && case "${CLAUDE_PROJECT_DIR%/}" in */.claude|*\\.claude) false ;; *) true ;; esac; then
   CCGS_ROOT="$CLAUDE_PROJECT_DIR"
 else
   CCGS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
@@ -45,9 +48,9 @@ fi
 # If that ever recurs, the diagnostic that works is a FIRE/DONE pair appended
 # to a gitignored log at the top and bottom of this script -- "did it run at
 # all" and "did it get here" are opposite failures with opposite fixes, and
-# nothing else distinguishes them. /compact in particular CANNOT be used as
-# evidence: PostCompact runs post-compact.sh, which prints the checkpoint
-# independently, so seeing the checkpoint proves nothing about this script.
+# nothing else distinguishes them. /compact is good evidence: SessionStart runs
+# again with source `compact`, and PostCompact output never reaches the
+# conversation, so a checkpoint seen after /compact came from this script.
 
 echo "=== Claude Code Game Studios — Session Context ==="
 
@@ -79,8 +82,11 @@ fi
 if [ -z "$REVIEW_MODE" ] && [ -f "production/review-mode.txt" ]; then
     REVIEW_MODE=$(head -1 production/review-mode.txt 2>/dev/null | tr -d '[:space:]')
 fi
+# With nothing configured, rigor defaults to `minimal`, which resolves
+# review_mode to `solo` -- what every skill runs. `lean` here named a review
+# mode no skill was using.
 if [ -z "$REVIEW_MODE" ]; then
-    REVIEW_MODE="lean"
+    REVIEW_MODE="solo"
 fi
 echo ""
 echo "Review mode: $REVIEW_MODE"
@@ -115,15 +121,29 @@ if [ -f ".claude/hooks/yaml-helper.sh" ]; then
     fi
 fi
 
+# --- Update alert ---
+# One line when a newer release is out. It reads a cache that a background job
+# refreshes at most once a day, so this hook makes no network call and never
+# waits for one. `updates.check: false` turns it off (effects-map.md).
+if [ -f .claude/hooks/update-check.sh ]; then
+    . .claude/hooks/update-check.sh
+    UPDATE_LINE=$(update_check_notice 2>/dev/null)
+    if [ -n "$UPDATE_LINE" ]; then
+        echo ""
+        echo "$UPDATE_LINE"
+    fi
+fi
+
 # --- Stage source agreement ---
 # `project.stage` in project.yaml is authoritative; production/stage.txt is a
 # legacy mirror kept for unmigrated hooks. Twelve consumers read the mirror --
 # including detect-gaps.sh and yaml-helper.sh -- so when the two disagree, part
 # of the system acts on one stage and part on the other, silently.
 #
-# Warn, never reconcile. Only /gate-check on a PASS may change a stage, so a
-# hook that "helpfully" rewrote the mirror would be advancing a phase gate
-# nobody passed. Helpers emit observations, never verdicts (CLAUDE.md).
+# Warn, never reconcile. Only /gate-check should change a stage (on a PASS, or
+# a CONCERNS whose risks you accepted), so a hook that "helpfully" rewrote the
+# mirror would be advancing a phase gate nobody passed. Helpers emit
+# observations, never verdicts (CLAUDE.md).
 STAGE_YAML=""
 STAGE_TXT=""
 if [ -f "project.yaml" ] && command -v get_yaml_key >/dev/null 2>&1; then
@@ -138,8 +158,9 @@ if [ -n "$STAGE_YAML" ] && [ -n "$STAGE_TXT" ] && [ "$STAGE_YAML" != "$STAGE_TXT
     echo "      project.yaml  project.stage : $STAGE_YAML   (authoritative)"
     echo "      production/stage.txt        : $STAGE_TXT   (legacy mirror)"
     echo "    Twelve consumers read the mirror, so part of the system is acting on"
-    echo "    each value. Only /gate-check on a PASS should change a stage — do not"
-    echo "    hand-edit either file to silence this."
+    echo "    each value. Only /gate-check should change a stage (on a PASS, or a"
+    echo "    CONCERNS whose risks you accepted) — do not hand-edit either file to"
+    echo "    silence this."
 fi
 
 # Current sprint (find most recent sprint file)
@@ -155,16 +176,16 @@ if [ -n "$LATEST_MILESTONE" ]; then
     echo "Active milestone: $(basename "$LATEST_MILESTONE" .md)"
 fi
 
-# Open bug count
-BUG_COUNT=0
-for dir in tests/playtest production; do
-    if [ -d "$dir" ]; then
-        count=$(find "$dir" -name "BUG-*.md" 2>/dev/null | wc -l)
-        BUG_COUNT=$((BUG_COUNT + count))
-    fi
-done
-if [ "$BUG_COUNT" -gt 0 ]; then
-    echo "Open bugs: $BUG_COUNT"
+# Open bug count: bug files whose header Status is not Closed or Verified
+# Fixed, as bug-stats.sh counts them. Counting the files themselves reported
+# every closed bug as open.
+BUG_OPEN=""
+if [ -f .claude/scripts/bug-stats.sh ]; then
+    BUG_OPEN=$(bash .claude/scripts/bug-stats.sh --root . tests/playtest production 2>/dev/null \
+               | awk -F'\t' '$1 == "open" { print $2 }')
+fi
+if [ -n "$BUG_OPEN" ] && [ "$BUG_OPEN" -gt 0 ]; then
+    echo "Open bugs: $BUG_OPEN"
 fi
 
 # Code health quick check.
@@ -179,17 +200,79 @@ fi
 if [ -f .claude/hooks/yaml-helper.sh ] && ! command -v resolve_code_root >/dev/null 2>&1; then
     . .claude/hooks/yaml-helper.sh 2>/dev/null
 fi
-if command -v resolve_code_root >/dev/null 2>&1; then
-    CODE_ROOT=$(resolve_code_root 2>/dev/null | cut -f1)
-else
-    CODE_ROOT=""
+_SS_CR=""
+command -v resolve_code_root >/dev/null 2>&1 && _SS_CR=$(resolve_code_root 2>/dev/null)
+CODE_ROOT=$(printf '%s' "$_SS_CR" | cut -f1)
+# A bad engine.code_root is said here, once a session: every code check after
+# this reports NOT ASSESSED until it is fixed.
+if [ "$(printf '%s' "$_SS_CR" | cut -f2)" = invalid ]; then
+    echo ""
+    echo "Code root: NOT ASSESSED ($(printf '%s' "$_SS_CR" | cut -f3)). Fix engine.code_root in project.yaml, or remove it to use the engine's folder."
 fi
+# Source files only, binaries skipped. Unity's code root is Assets/, which also
+# holds every texture, model and audio file: an unfiltered grep read all of
+# them, twice, inside this hook's 10s budget -- ahead of the session-state
+# block below, so a timeout here lost the recovery too -- and counted each
+# "Binary file ... matches" line as a TODO.
 if [ -n "$CODE_ROOT" ] && [ -d "$CODE_ROOT" ]; then
-    TODO_COUNT=$(grep -r "TODO" "$CODE_ROOT/" 2>/dev/null | wc -l)
-    FIXME_COUNT=$(grep -r "FIXME" "$CODE_ROOT/" 2>/dev/null | wc -l)
+    _SS_SRC=(--include='*.gd' --include='*.cs' --include='*.cpp' --include='*.h' --include='*.hpp'
+             --include='*.c' --include='*.py' --include='*.rs' --include='*.lua'
+             --include='*.js' --include='*.ts')
+    # tr: BSD wc (macOS) right-aligns its count, and these are printed as-is.
+    if [ "$CODE_ROOT" = "." ]; then
+        # The project root itself (a flat web game): the files outside the
+        # framework's folders, listed by code_root_find, not a grep -r of
+        # everything. JavaScript counts here, as it is the whole game.
+        _SS_FILES=$(code_root_find . -type f \( -name '*.js' -o -name '*.ts' -o -name '*.gd' -o -name '*.cs' \
+                    -o -name '*.cpp' -o -name '*.h' -o -name '*.hpp' -o -name '*.c' -o -name '*.py' -o -name '*.rs' -o -name '*.lua' \))
+        TODO_COUNT=0; FIXME_COUNT=0
+        if [ -n "$_SS_FILES" ]; then
+            TODO_COUNT=$(printf '%s\n' "$_SS_FILES" | tr '\n' '\0' | xargs -0 grep -I "TODO" /dev/null 2>/dev/null | wc -l | tr -d ' ')
+            FIXME_COUNT=$(printf '%s\n' "$_SS_FILES" | tr '\n' '\0' | xargs -0 grep -I "FIXME" /dev/null 2>/dev/null | wc -l | tr -d ' ')
+        fi
+    else
+        TODO_COUNT=$(grep -rI "${_SS_SRC[@]}" "TODO" "$CODE_ROOT/" 2>/dev/null | wc -l | tr -d ' ')
+        FIXME_COUNT=$(grep -rI "${_SS_SRC[@]}" "FIXME" "$CODE_ROOT/" 2>/dev/null | wc -l | tr -d ' ')
+    fi
     if [ "$TODO_COUNT" -gt 0 ] || [ "$FIXME_COUNT" -gt 0 ]; then
         echo ""
         echo "Code health: ${TODO_COUNT} TODOs, ${FIXME_COUNT} FIXMEs in ${CODE_ROOT}/"
+    fi
+fi
+
+# --- engine reference vs configured engine -----------------------------------
+# /setup-engine, the grow's record step and /project-settings write CLAUDE.md's
+# ENGINE-REFERENCE-IMPORT line; the template ships with none until an engine is
+# set. Edit engine.name in project.yaml by hand and the import keeps loading the
+# previous engine's reference as project instructions -- every session, silently --
+# or, with no line yet, loads none.
+# An OBSERVATION, never an action (CLAUDE.md): it reports, the user decides.
+# Printed BEFORE the session state: hook output past 10,000 characters is cut
+# to a preview, so a warning below a long checkpoint could be lost.
+if [ -f project.yaml ] && [ -f CLAUDE.md ]; then
+    ERI=$(grep -m1 -E '^@docs/engine-reference/[a-z]+/VERSION\.md' CLAUDE.md 2>/dev/null \
+          | sed -n 's|^@docs/engine-reference/\([a-z]*\)/VERSION\.md.*|\1|p')
+    # engine.name, not the first `name:` line: `project.name: Marrow` above the
+    # engine block read as engine "marrow" and warned on a correct project. The
+    # first word only, so "Unreal Engine 5" is the unreal reference folder.
+    CFG=$(awk '/^engine:/ { e = 1; next } e && /^[^[:space:]#]/ { exit }
+               e && /^[[:space:]]+name:/ { sub(/^[[:space:]]+name:[[:space:]]*/, ""); gsub(/["'"'"']/, "");
+                                           split($0, w, /[[:space:]#]/); print w[1]; exit }' \
+          project.yaml 2>/dev/null | tr '[:upper:]' '[:lower:]')
+    if [ -n "$ERI" ] && [ -n "$CFG" ] && [ "$ERI" != "$CFG" ]; then
+        echo ""
+        echo "!! ENGINE REFERENCE MISMATCH"
+        echo "   project.yaml engine.name : $CFG"
+        echo "   CLAUDE.md imports        : docs/engine-reference/$ERI/VERSION.md"
+        echo "   Every session is loading the $ERI reference on a $CFG project."
+        echo "   Fix: re-run /setup-engine, or edit the ENGINE-REFERENCE-IMPORT line."
+    elif [ -z "$ERI" ] && [ -n "$CFG" ] && [ -f "docs/engine-reference/$CFG/VERSION.md" ]          && grep -q 'ENGINE-REFERENCE-IMPORT' CLAUDE.md 2>/dev/null; then
+        echo ""
+        echo "!! NO ENGINE REFERENCE IMPORTED"
+        echo "   project.yaml engine.name : $CFG"
+        echo "   CLAUDE.md imports no docs/engine-reference/<engine>/VERSION.md."
+        echo "   Fix: re-run /setup-engine, or add @docs/engine-reference/$CFG/VERSION.md"
+        echo "   on the line under the ENGINE-REFERENCE-IMPORT comment."
     fi
 fi
 
@@ -215,15 +298,23 @@ if [ -f "$STATE_FILE" ] && { ! command -v session_state_enabled >/dev/null 2>&1 
     echo "A previous session left state at: $STATE_FILE"
     echo "Read this file to recover context and continue where you left off."
     echo ""
-    # The CHECKPOINT region -- the same region pre-compact.sh injects.
+    # The CHECKPOINT region, as the schema in
+    # .claude/docs/templates/session-state.md defines it.
     #
-    # Previewing `tail -20` here while pre-compact takes `head -100` would put two
-    # consumers on opposite ends of one file, so which slice you got would
-    # depend on which hook happened to fire. Neither was wrong, because
-    # nothing defined where the recoverable state lived. The schema in
-    # .claude/docs/templates/session-state.md defines it; both read it now.
-    CHECKPOINT=$(sed -n '/<!-- CHECKPOINT -->/,/<!-- \/CHECKPOINT -->/p' "$STATE_FILE" 2>/dev/null \
-                 | grep -v '<!-- /\?CHECKPOINT -->')
+    # Previewing `tail -20` here while pre-compact took `head -100` put two
+    # consumers on opposite ends of one file, so which slice you got
+    # depended on which hook happened to fire. Neither was wrong, because
+    # nothing defined where the recoverable state lived. The schema does now.
+    #
+    # A marker is a line holding only the marker (spaces and a CR around it
+    # allowed), as rotate-session-state.sh matches it. The template's HOW
+    # comment quotes `<!-- /CHECKPOINT -->` inside a sentence, so an unanchored
+    # match took that quote for the closing marker of a file that had lost its
+    # real one, and previewed the narrative as the checkpoint.
+    CP_OPEN_RE='^[[:space:]]*<!-- CHECKPOINT -->[[:space:]]*$'
+    CP_CLOSE_RE='^[[:space:]]*<!-- /CHECKPOINT -->[[:space:]]*$'
+    CHECKPOINT=$(sed -n '/^[[:space:]]*<!-- CHECKPOINT -->[[:space:]]*$/,/^[[:space:]]*<!-- \/CHECKPOINT -->[[:space:]]*$/p' "$STATE_FILE" 2>/dev/null \
+                 | grep -v -e "$CP_OPEN_RE" -e "$CP_CLOSE_RE")
     TOTAL_LINES=$(wc -l < "$STATE_FILE" 2>/dev/null | tr -d ' ')
     # A sed range whose END address never matches runs to EOF. So a file with an
     # opening marker and NO closing one produced a non-empty capture of the whole
@@ -235,8 +326,8 @@ if [ -f "$STATE_FILE" ] && { ! command -v session_state_enabled >/dev/null 2>&1 
     # Two consumers of one region must agree on what malformed means.
     # `<!-- CHECKPOINT -->` cannot match `<!-- /CHECKPOINT -->` -- the slash sits
     # where the space would be -- so these two counts are independent.
-    CP_OPEN=$(grep -c '<!-- CHECKPOINT -->' "$STATE_FILE" 2>/dev/null | tr -d ' ')
-    CP_CLOSE=$(grep -c '<!-- /CHECKPOINT -->' "$STATE_FILE" 2>/dev/null | tr -d ' ')
+    CP_OPEN=$(grep -c "$CP_OPEN_RE" "$STATE_FILE" 2>/dev/null | tr -d ' ')
+    CP_CLOSE=$(grep -c "$CP_CLOSE_RE" "$STATE_FILE" 2>/dev/null | tr -d ' ')
     if [ "${CP_OPEN:-0}" -gt 0 ] && [ "${CP_CLOSE:-0}" -eq 0 ]; then
         echo "  [!] CHECKPOINT block is not terminated — no <!-- /CHECKPOINT --> marker."
         echo "      Not previewing it: without the closing marker the checkpoint"
@@ -245,8 +336,32 @@ if [ -f "$STATE_FILE" ] && { ! command -v session_state_enabled >/dev/null 2>&1 
         echo "      Re-create from .claude/docs/templates/session-state.md."
         echo "  ... ($TOTAL_LINES total lines — read the full file to continue)"
     elif [ -n "$CHECKPOINT" ]; then
+        # active.md is gitignored, so it stays put when you switch branches and
+        # a checkpoint written on one branch was shown as current on another.
+        # Its Branch value is the first backquoted word, or else the first word.
+        # Silent when there is no value, it is the template's [branch], or HEAD
+        # is detached ("HEAD") or not a repository (empty), so nothing compares.
+        CP_BRANCH=$(printf '%s\n' "$CHECKPOINT" | sed -n -E 's/^\*\*Branch(:\*\*|\*\*:)[[:space:]]*//p' \
+                    | head -1 | tr -d '\r' | sed -E 's/^`([^`]*)`.*/\1/; s/[[:space:]].*//')
+        case "$CP_BRANCH" in
+            ''|'['*) ;;
+            *) if [ -n "$BRANCH" ] && [ "$BRANCH" != "HEAD" ] && [ "$CP_BRANCH" != "$BRANCH" ]; then
+                   echo "[!] This checkpoint is from branch $CP_BRANCH; you are on $BRANCH. Check it still applies before acting on it."
+               fi ;;
+        esac
+        # Capped at 25 lines / 3,000 characters. Claude Code keeps 10,000
+        # characters of hook output and shows only a 2,000-character preview
+        # past that, so an uncapped checkpoint could cut itself -- and anything
+        # printed after it -- out of what Claude sees.
         echo "Checkpoint:"
-        printf '%s\n' "$CHECKPOINT"
+        printf '%s\n' "$CHECKPOINT" | awk '
+            { n++; c += length($0) + 1 }
+            n > 25 || c > 3000 { cut = 1; exit }
+            { print }
+            END { if (cut) exit 3 }'
+        if [ $? -eq 3 ]; then
+            echo "  ... checkpoint truncated ($(printf '%s\n' "$CHECKPOINT" | wc -l | tr -d ' ') lines) — read $STATE_FILE for the rest"
+        fi
         echo "  ... ($TOTAL_LINES total lines — read the full file for detail)"
     else
         echo "Quick summary (first 20 lines — no CHECKPOINT block in this file):"
@@ -262,26 +377,6 @@ if [ -f "$STATE_FILE" ] && { ! command -v session_state_enabled >/dev/null 2>&1 
         echo "        production/session-logs/ — bash .claude/scripts/rotate-session-state.sh"
     fi
     echo "=== END SESSION STATE PREVIEW ==="
-fi
-
-# --- engine reference vs configured engine -----------------------------------
-# /setup-engine is the only thing that rewrites CLAUDE.md's ENGINE-REFERENCE-IMPORT
-# line. Edit engine.name in project.yaml by hand and the import keeps loading the
-# previous engine's reference as project instructions -- every session, silently.
-# An OBSERVATION, never an action (CLAUDE.md): it reports, the user decides.
-if [ -f project.yaml ] && [ -f CLAUDE.md ]; then
-    ERI=$(grep -m1 -E '^@docs/engine-reference/[a-z]+/VERSION\.md' CLAUDE.md 2>/dev/null \
-          | sed -n 's|^@docs/engine-reference/\([a-z]*\)/VERSION\.md.*|\1|p')
-    CFG=$(sed -n 's/^[[:space:]]*name:[[:space:]]*"\{0,1\}\([A-Za-z]*\)"\{0,1\}[[:space:]]*$/\1/p' \
-          project.yaml 2>/dev/null | head -1 | tr '[:upper:]' '[:lower:]')
-    if [ -n "$ERI" ] && [ -n "$CFG" ] && [ "$ERI" != "$CFG" ]; then
-        echo ""
-        echo "!! ENGINE REFERENCE MISMATCH"
-        echo "   project.yaml engine.name : $CFG"
-        echo "   CLAUDE.md imports        : docs/engine-reference/$ERI/VERSION.md"
-        echo "   Every session is loading the $ERI reference on a $CFG project."
-        echo "   Fix: re-run /setup-engine, or edit the ENGINE-REFERENCE-IMPORT line."
-    fi
 fi
 
 echo "==================================="
