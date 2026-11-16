@@ -1,6 +1,6 @@
 # Babylon.js UI — Quick Reference
 
-Last verified: 2026-09-25 | Engine: Babylon.js 9.28
+Last verified: 2026-11-16 | Engine: Babylon.js 9.36
 
 > **Status: STUB** — overview of UI options. Detailed patterns live in the
 > `babylonjs-gui-specialist` agent definition. This file will be expanded with

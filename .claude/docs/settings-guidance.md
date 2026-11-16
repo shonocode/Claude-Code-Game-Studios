@@ -6,7 +6,7 @@ other doc does:
 1. **Which value should a skill recommend** for a given project or user?
 2. **When should a skill proactively suggest changing** a setting already set?
 
-## Boundary with its siblings — do not duplicate their content here
+## Boundary with its siblings
 
 | Doc | Answers | Nature |
 |---|---|---|
@@ -15,8 +15,8 @@ other doc does:
 | **`settings-guidance.md`** (this file) | Which value to *recommend*, and *when* | Prescriptive |
 
 Skills reference this doc **on demand**, only at a "recommend a setting" moment.
-It is deliberately **not** a CLAUDE.md import — advisory content must not ride in
-per-turn context (the same reason `context-management.md` was demoted).
+It is **not** a CLAUDE.md import — advisory content must not ride in per-turn
+context.
 
 ---
 
@@ -26,8 +26,7 @@ Almost every "what settings should I use?" question reduces to one choice:
 `modes.rigor` (`minimal` | `standard` | `full`, default `minimal`). It fronts six
 sub-knobs — `modes.workflow`, `docs.density`, `qa.level`, `modes.story_granularity`,
 `modes.review_mode`, `team.size`. Recommend **rigor**, not the six; let the
-expansion do the rest. Full expansion table lives in `effects-map.md § modes.rigor`
-— do not restate it here.
+expansion do the rest. The full expansion table is in `effects-map.md § modes.rigor`.
 
 `modes.automation` (`collaborative` | `guided` | `autonomous`) is a **separate
 axis** — how often skills stop to confirm — and is *not* fronted by rigor. Pick it
@@ -44,7 +43,7 @@ points, not verdicts — the user can always override.
 |---|---|---|---|
 | Weekend jam / prototype / throwaway | `minimal` | Shipping beats recording; design lives in the maker's head | Bump one deep system: `workflow_overrides.system_overrides: {combat: full}` |
 | Small solo / hobby game (arcade, puzzle, short narrative) | `minimal` → `standard` if it grows | Start light; add rigor when scope proves real | — |
-| Focused commercial indie (platformer, roguelike, tactics, deckbuilder) | `standard` *(default)* | One well-understood loop; enough design to build correctly | "Comprehensive but compact": `rigor: full` + `docs.density: terse` |
+| Focused commercial indie (platformer, roguelike, tactics, deckbuilder) | `standard` | One well-understood loop; enough design to build correctly | "Comprehensive but compact": `rigor: full` + `docs.density: terse` |
 | Systems-heavy / long-haul (open-world RPG, colony sim, immersive sim, 4X, survival) | `full` | Many interacting systems; a design mistake costs weeks | Solo dev: keep `full` on disk, set `review_mode: solo` locally |
 | Live-service / competitive multiplayer | `full` + domain emphasis | Full pipeline *plus* netcode/security/live-ops | Raise `qa.level` / `testing.strict.*` for the online-critical types |
 
@@ -63,7 +62,7 @@ an archetype and **pre-select** the recommendation rather than asking cold. Sign
 | open-world, RPG, sim, sandbox, faction, crafting, economy, MMO, multiplayer, "systems" | `full` |
 | jam, weekend, prototype, "first game", small, "just trying", experiment | `minimal` |
 | "release", "commercial", "on Steam", a single clear core loop | `standard` |
-| *ambiguous / nothing above* | `standard` (the documented default) |
+| *ambiguous / nothing above* | `minimal` (the documented default) |
 
 **Rules:** these are heuristics, never locks. Always confirm the pre-selection with
 the user in their own terms ("Sounds like a big systems game — I'd suggest `full`
@@ -73,8 +72,8 @@ rigor; want that?"). If the user has **no concept yet** (exploring), do not seed
 "No concept yet" means **no signal**, not a particular onboarding path. A rough
 one-line hint is still a description: if it trips the signals above, seed from the
 signal. Only fall back to `minimal`-for-exploring when the user has given you
-nothing to map. (`/start` Phase 3d states the same rule for its Path A/B branch —
-the two must agree, since both drive the identical recommendation.)
+nothing to map. (`/start` Phase 4 applies the same rule when it infers rigor for its
+Path A/B branch.)
 
 ---
 
@@ -86,13 +85,13 @@ modes exist to eliminate.
 
 | Trigger (crossing) | Direction | Detectable signal | Suggested action |
 |---|---|---|---|
-| Project grew past its band | ↑ raise | System-GDD count crosses ~9, or `src/` crosses the Production threshold, while rigor is `minimal` | "You're at N systems on `rigor: minimal` — most projects this size run `standard`. Revisit? → `/settings`" |
+| Project grew past its band | ↑ raise | System-GDD count crosses ~9, or the code root (`src/`, `Assets/` or `Source/`) crosses the Production threshold, while rigor is `minimal` | "You're at N systems on `rigor: minimal` — most projects this size run `standard`. Revisit? → `/project-settings`" |
 | Stage advanced into Production | ↑ raise | `/gate-check` PASS into Production while rigor is `minimal` | Same, offered once at the gate |
-| User sounds overwhelmed by process | ↓ lower | Phrases like "too many steps", "so much documentation", "overwhelmed" — *and* rigor is not already `minimal` | "If the required-doc list feels heavy, a lower rigor trims it → `/settings modes.rigor=standard`" |
-| Chosen rigor mismatches described scope | flag once | Onboarding pick contradicts the Phase-2 description | State it in one sentence, offer `/settings`, do not re-ask |
+| User sounds overwhelmed by process | ↓ lower | Phrases like "too many steps", "so much documentation", "overwhelmed" — *and* rigor is not already `minimal` | "If the required-doc list feels heavy, a lower rigor trims it → `/project-settings modes.rigor=standard`" |
+| Chosen rigor mismatches described scope | flag once | Onboarding pick contradicts the Phase-2 description | State it in one sentence, offer `/project-settings`, do not re-ask |
 
 **Frequency guard:** the crossing *is* the gate. Because the hosts (`/gate-check` on
-PASS, `/help` on request) are themselves infrequent, no persistent "already nudged"
+PASS, `/next-step` on request) are themselves infrequent, no persistent "already nudged"
 state is needed — but never emit the same suggestion twice in one session.
 
 ---
@@ -101,12 +100,12 @@ state is needed — but never emit the same suggestion twice in one session.
 
 | Skill | Moment | Sections used |
 |---|---|---|
-| `/start` | Phase 3d/4 — choosing rigor | § 2 (presets), § 3 (seed from concept) |
-| `/help` | escalation footer when user sounds stuck/overwhelmed | § 4 (lower trigger) |
+| `/start` | Phase 4 — inferring rigor for the card | § 2 (presets), § 3 (seed from concept) |
+| `/next-step` | escalation footer when the user sounds overwhelmed, or the project has outgrown its tier | § 4 (lower and raise triggers) |
 | `/gate-check` | on PASS into a new stage | § 4 (raise trigger) |
-| `/settings` | view output — further reading | § 2 (choosing a value) |
+| `/project-settings` | view output — further reading | § 2 (choosing a value) |
 
-Each skill carries a **one-line pointer** to this doc, not a copy of its tables.
+These skills each carry a **one-line pointer** to this doc.
 
 ---
 
@@ -115,6 +114,6 @@ Each skill carries a **one-line pointer** to this doc, not a copy of its tables.
 - **Recommend, don't dictate.** State the suggestion and the reason in one line;
   the user decides. (`collaborative`/`guided` require this; even `autonomous`
   treats a rigor change as a `schema_changes` decision and asks.)
-- **Always route to `/settings`** — never edit `project.yaml` as a side effect of a
+- **Always route to `/project-settings`** — never edit `project.yaml` as a side effect of a
   recommendation.
 - **One line, then stop.** A nudge is a nudge, not a lecture.

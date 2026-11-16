@@ -3,6 +3,22 @@
 
 # Section Guidance — UX Spec Mode
 
+**In this file:**
+
+- Section A: Purpose & Player Need
+- Section B: Player Context on Arrival
+- Section B2: Navigation Position
+- Section B3: Entry & Exit Points
+- Section C: Layout Specification
+- Section D: States & Variants
+- Section E: Interaction Map
+- Section E2: Events Fired
+- Section E3: Transitions & Animations
+- Section F: Data Requirements
+- Section F2: Input Method Completeness Checklist
+- Section G: Accessibility
+- Section H: Localization Considerations
+- Section I: Acceptance Criteria
 
 #### Section A: Purpose & Player Need
 
@@ -196,6 +212,19 @@ Present the data requirements as a table:
 |------|--------------|--------------|-------|
 | [item] | [system] | Read | — |
 | [item] | [system] | Write | [concern if any] |
+
+---
+
+#### Section F2: Input Method Completeness Checklist
+
+One checklist block per input method in the spec's **Platform Target** line —
+keyboard, gamepad, mouse, touch; drop the blocks for methods this game does not
+support and say so. Take the items from section 11 of
+`.claude/docs/templates/ux-spec.md` (reachability, tab/d-pad order, visible
+focus, focus trap for modals, Esc/back behavior, hit-target sizes, controller
+disconnect). Tick an item only when the Interaction Map above already specifies
+it; an unticked item is an open implementation question — list it under Open
+Questions rather than ticking it.
 
 ---
 

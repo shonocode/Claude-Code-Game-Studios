@@ -25,20 +25,18 @@ Two regions, and the distinction is load-bearing:
 | Region | Who reads it | Rule |
 |--------|--------------|------|
 | `<!-- STATUS -->` … `<!-- /STATUS -->` | `statusline.sh` (breadcrumb, Production+ only) | Keep the markers even when empty |
-| `<!-- CHECKPOINT -->` … `<!-- /CHECKPOINT -->` | `session-start.sh` and `pre-compact.sh` | **Overwrite, never append.** Under ~25 lines — hooks inject it verbatim |
+| `<!-- CHECKPOINT -->` … `<!-- /CHECKPOINT -->` | `session-start.sh` (every start, including after a compaction) | **Overwrite, never append.** Under ~25 lines — shown verbatim |
 | Everything after `<!-- /CHECKPOINT -->` | humans, and an agent that wants detail | Free-form; no hook injects it |
 
 The checkpoint holds: current task, next step, what it is blocked on, files in
 progress, open questions. Write it so a cold reader can resume without opening
 anything else.
 
-> **Why the split.** One append-only file doing both jobs grows without bound —
-> past 700 lines every consumer invents its own slice: a status line parsing a
-> STATUS block nothing writes, `pre-compact` injecting `head -100` (12.7 KB, at
-> the moment context is scarcest), `session-start` previewing `tail -20` — the
-> opposite end. None was wrong, because nothing defined where
-> the recoverable state lived. Now every consumer reads the named region, and
-> the cost is fixed no matter how long the narrative grows.
+> **Why the split.** One append-only file doing both jobs grows without bound,
+> and every consumer then reads a different slice of it: the top, the bottom, or
+> a block nothing writes. None of them is wrong, because nothing defines where
+> the recoverable state lives. With a named region, every consumer reads the
+> same part, and the cost is fixed no matter how long the narrative grows.
 
 **Rotation.** When the narrative passes ~200 lines, move it into
 `production/session-logs/`:
@@ -76,9 +74,12 @@ After any disruption (compaction, crash, `/clear`), read the state file first.
 
 When creating multi-section documents (design docs, architecture docs, lore entries):
 
-1. Create the file immediately with a skeleton (all section headers, empty bodies)
+1. Ask to create the file ("May I create [path] with the section skeleton?"), then
+   create it with every section header and empty bodies
 2. Discuss and draft one section at a time in conversation
-3. Write each section to the file as soon as it's approved
+3. Write each section to the file as soon as it's approved (a skill that writes
+   once at the end, such as `/create-architecture`, records approved sections in
+   the session state instead)
 4. Update the session state file after each section
 5. After writing a section, previous discussion about that section can be safely
    compacted — the decisions are in the file
@@ -122,12 +123,13 @@ Current helpers:
 - **`review-scope.sh`** — which GDDs changed since the last cross-review, plus
   their declared dependencies. Replaces reasoning through git history.
 
-Two rules when adding one:
+Two rules for helpers:
 
-1. **A skill invoking a script needs `Bash` in `allowed-tools`**, or the step
-   silently no-ops. A skill that only needs *resolved config* does not — use the
-   documented `` !`cmd` `` body form, which is preprocessing and is not gated by
-   `allowed-tools` (see `.claude/docs/config-resolution.md`).
+1. **Grant it the way `.claude/docs/config-resolution.md` shows.** `allowed-tools`
+   pre-approves commands; it does not restrict them — a skill without the grant
+   still runs the script, after a permission prompt. An injected `` !`cmd` `` in
+   the body is stricter: unapproved, it aborts the whole invocation, so it needs
+   the exact grant that doc gives.
 2. **Emit observations, not verdicts.** A script that scores or judges will
    eventually contradict a tier, mode, or per-system override it does not know
    about. Report what is on disk and let the caller decide what it means.

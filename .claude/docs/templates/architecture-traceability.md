@@ -6,7 +6,7 @@
 ## Document Status
 
 - **Last Updated**: [YYYY-MM-DD]
-- **Engine**: [e.g. Godot 4.6, Unity 6, Unreal Engine 5.4, Babylon.js 9.5]
+- **Engine**: [e.g. Godot 4.7, Babylon.js 9.36]
 - **GDDs Indexed**: [N]
 - **ADRs Indexed**: [M]
 - **Last Review**: [link to docs/architecture/architecture-review-[date].md]
@@ -31,8 +31,8 @@
 
 | Req ID | GDD | System | Requirement Summary | ADR(s) | Status | Notes |
 |--------|-----|--------|---------------------|--------|--------|-------|
-| TR-[gdd]-001 | [filename] | [system name] | [one-line summary] | [ADR-NNNN] | ✅ | |
-| TR-[gdd]-002 | [filename] | [system name] | [one-line summary] | — | ❌ GAP | Needs `/architecture-decision [title]` |
+| TR-[system]-001 | [filename] | [system name] | [one-line summary] | [ADR-NNNN] | ✅ | |
+| TR-[system]-002 | [filename] | [system name] | [one-line summary] | — | ❌ GAP | Needs `/architecture-decision [title]` |
 
 ---
 

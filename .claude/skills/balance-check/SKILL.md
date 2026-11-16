@@ -9,6 +9,8 @@ model: sonnet
 
 !`bash "${CLAUDE_SKILL_DIR}/../../hooks/yaml-helper.sh" resolve_config --keys automation`
 
+# Balance Check
+
 
 
 Every `AskUserQuestion` call follows `.claude/docs/automation-modes.md`
@@ -33,11 +35,10 @@ not a filled-in report.** Check first, and stop if the check fails.
 
 **A verdict of `NOT ASSESSED` is a success.** It is the correct, useful answer to
 "what does the data say?" when there is no data. The failure mode this prevents is
-specific and has been observed in practice: report templates whose verdict
-enum had no "could not run" state produced **false clean passes** — an asset audit
-returning COMPLIANT on a project with no assets and no standards, and a
-performance profile reporting ">99% headroom against a 16.67ms budget" with zero
-profiler data and no budget ever set.
+specific: a report whose verdict enum has no "could not run" state produces
+**false clean passes** — an asset audit returning COMPLIANT on a project with no
+assets and no standards, or a performance profile reporting ">99% headroom against
+a 16.67ms budget" with zero profiler data and no budget ever set.
 
 **Absence of evidence is never evidence of absence.** A scan that finds no
 matches because there are no files to scan has not verified anything. Say which of
@@ -47,7 +48,7 @@ the two happened — a reader cannot tell from a green result.
 
 ## Phase 1: Identify Balance Domain
 
-Determine the balance domain from `$ARGUMENTS[0]`:
+Determine the balance domain from `$ARGUMENTS` — the whole string, since a data-file path may contain spaces:
 
 - **Combat** → weapon/ability DPS, time-to-kill, damage type interactions
 - **Economy** → resource faucets/sinks, acquisition rates, item pricing
@@ -61,7 +62,7 @@ If no argument, ask the user which system to check.
 
 ## Phase 2: Read Data Files
 
-Read relevant files from `assets/data/` and `design/balance/` for the identified domain.
+Read relevant files from `assets/data/` (`data/` in a web game) and `design/balance/` for the identified domain.
 Note every file read — they will appear in the Data Sources section of the report.
 
 ---
@@ -83,13 +84,28 @@ populates it), skip this and use the GDD alone.
 
 Then read the GDD for the system from `design/gdd/` to understand intended design
 targets, tuning knobs, and expected value ranges — for anything the registry did
-not already supply. This is the baseline for "correct" behaviour.
+not already supply. This is the baseline for "correct" behaviour. Read it by section:
+find the headings you need with the Grep tool (pattern `^#`, content mode) and
+Read those ranges with offset and limit.
+
+If the data files are FOUND but neither source gives targets for this domain,
+the sections that judge against targets (Outliers Detected, and Progression
+Analysis where the domain has a curve) are `NOT ASSESSED — NO DATA`. Each one names what was missing — the
+GDD it looked for in `design/gdd/`, and whether the registry was absent or empty
+— and names `/design-system`, which writes both.
 
 ---
 
 ## Phase 4: Perform Analysis
 
-Run domain-specific checks:
+**Every domain: compare each value with its target.** For each named value in the
+data files, take its target from Phase 3 — a registry constant's `value`, a
+registry formula's `output_range`, or the range the GDD states — and compare. A
+value outside its target is a row in Outliers Detected (`player_damage_base` 140
+against 90–110). A value with no target anywhere is neither in range nor an
+outlier: list it under Values That Need Attention as `no stated range — not judged`.
+
+Then run domain-specific checks:
 
 **Combat balance:**
 - Calculate DPS for all weapons/abilities at each power tier
@@ -148,6 +164,19 @@ Run domain-specific checks:
 [Specific values with suggested adjustments and rationale]
 ```
 
+Choose the Health Summary by the worst finding, first match wins:
+- **CRITICAL ISSUES** — a degenerate strategy (one choice dominates every
+  alternative), a progression that stalls or cannot be completed, or an economy
+  loop with no sink
+- **CONCERNS** — outliers or curve problems a tuning pass can fix, with no
+  finding of the critical kind
+- **NOT ASSESSED** — nothing to analyze (the no-data path above), a section that
+  needs targets is `NOT ASSESSED — NO DATA`, or a value had no stated range to
+  judge it against; name which. It ranks below the two finding verdicts, because
+  a measured problem is more actionable than a gap, and above HEALTHY
+- **HEALTHY** — every value judged against a stated target, no outliers, no
+  degenerate strategies, progression within the stated targets
+
 ---
 
 ## Phase 6: Fix & Verify Cycle
@@ -159,9 +188,14 @@ After presenting the report, use `AskUserQuestion`:
   - `[B] Save report to design/balance/balance-check-[system]-[date].md`
   - `[C] Stop here — I'll review the findings manually`
 
+**Run as a subagent?** `game-designer` preloads this skill, and a subagent has
+no `AskUserQuestion`. End your reply with the question and these three options
+as a short list, and stop: whoever called you asks the user and passes the
+answer back.
+
 If [A]:
 - Ask which issue to address first (refer to the Recommendations table by priority row)
-- Guide the user to update the relevant data file in `assets/data/` or formula in `design/balance/`
+- Guide the user to update the relevant data file in `assets/data/` (`data/config.json` in a web game) or formula in `design/balance/`
 - After each fix, offer to re-run the relevant balance checks to verify no new outliers were introduced
 - If the fix changes a tuning knob defined in a GDD or referenced by an ADR, remind the user:
   > "This value is defined in a design document. Run `/propagate-design-change [path]` on the affected GDD to find downstream impacts before committing."

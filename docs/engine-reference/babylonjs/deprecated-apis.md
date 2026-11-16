@@ -1,13 +1,13 @@
 # Babylon.js — Deprecated APIs
 
-Last verified: 2026-09-25 | Engine: Babylon.js 9.28
+Last verified: 2026-11-16 | Engine: Babylon.js 9.36
 
 > **Status: STUB** — this file is intentionally minimal. Will be expanded as
 > deprecation cases come up during implementation. For the canonical list,
 > always check https://doc.babylonjs.com/breaking-changes/ and the deprecation
 > warnings emitted at runtime.
 
-## Deprecated as of 9.5 (still applies at 9.28)
+## Deprecated as of 9.5 (still applies at 9.36)
 
 ### `babylonjs` (UMD package)
 
@@ -17,8 +17,8 @@ The UMD package defeats tree-shaking and inflates bundle size dramatically.
 
 ### `SceneLoader` class (static methods)
 
-`SceneLoader` is marked `@deprecated` in the `@babylonjs/core` 9.5.0 **and**
-9.28.0 typings: "The module level functions are more efficient for bundler tree
+`SceneLoader` is marked `@deprecated` in the `@babylonjs/core` 9.5.0, 9.28.0 **and**
+9.36.0 typings: "The module level functions are more efficient for bundler tree
 shaking and allow plugin options to be passed through ... The SceneLoader class
 will remain available". Use the module-level functions from
 `@babylonjs/core/Loading/sceneLoader`:
@@ -80,6 +80,17 @@ with the "Use Instead" column. Entries come from `@deprecated` tags added to the
 | `experimentalDecorators: true` in `tsconfig.json` alongside Babylon decorators | `experimentalDecorators: false` (default) + `accessor` on `@expandToProperty` / `@addAccessorsForMaterialProperty` fields | 9.15 moved to TC39 Stage 3 decorators; legacy mode makes them silently no-op |
 | Mixing `.pure` imports without calling `Register*()` | Call the matching `Register*()` (e.g. `RegisterStandardEngineExtensions()`), or use normal (non-`.pure`) imports | `.pure` modules run no side effects by design |
 | Relying on the Babylon.js CDN for runtime assets (e.g. the OpenUSD loader's default `workerUrl`) in production | Self-host the files | Upstream: "The CDN should not be used in production environments" (Framework Versions page) |
+
+## 9.28 → 9.36
+
+From `@deprecated` tags in the `@babylonjs/core` 9.36.0 typings and the
+CHANGELOG entry "Deprecate HTML-in-Canvas polyfill installer in favor of
+up-to-date polyfills" (#19132, 9.36).
+
+| Deprecated | Use Instead | Since | Notes |
+|------------|-------------|-------|-------|
+| `InstallHtmlInCanvasPolyfill(options?)` | Import an up-to-date polyfill directly, before creating the engine — the typings' example is `import "@underglass/html-in-canvas-polyfill/auto";` | 9.36 | Typings: `three-html-render` implements an outdated proposal and makes `HtmlTexture` use legacy APIs. `HtmlTexture` detects a directly imported polyfill like a native implementation. |
+| `UninstallHtmlInCanvasPolyfill()` / `IInstallHtmlInCanvasPolyfillOptions` | The polyfill's own removal API (e.g. `uninstall()` from `@underglass/html-in-canvas-polyfill`) | 9.36 | Same reason |
 
 ## Watching Future Deprecations
 

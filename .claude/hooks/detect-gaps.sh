@@ -11,16 +11,19 @@
 # project, not this one. Resolving to the script's own location first would
 # override them. So, in order:
 #   1. cwd holds project.yaml   -> cwd   (a project root)
-#   2. cwd holds .claude/       -> cwd   (a project root not yet configured)
-#   3. CLAUDE_PROJECT_DIR       -> that  (populated in the hook environment)
+#   2. cwd holds .claude/       -> cwd   (a project root not yet configured),
+#      unless cwd is itself named .claude: a stray .claude/.claude/ would
+#      make .claude/ a root, and the hooks would write .claude/production/
+#   3. CLAUDE_PROJECT_DIR       -> that  (populated in the hook environment),
+#      unless it names a .claude folder, for the same reason as rule 2
 #   4. this script's location   -> <root>/.claude/hooks/../.. by construction
 # Rule 4 always works and needs no environment at all; rules 1-2 stop it from
 # overriding a caller that legitimately means somewhere else.
 #
 # NOT an upward search: that resolves a nested project to its parent's config.
-if [ -f "project.yaml" ] || [ -d ".claude" ]; then
+if [ -f "project.yaml" ] || { [ -d ".claude" ] && [ "${PWD##*/}" != ".claude" ]; }; then
   CCGS_ROOT="$PWD"
-elif [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ -d "${CLAUDE_PROJECT_DIR}" ]; then
+elif [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ -d "${CLAUDE_PROJECT_DIR}" ] && case "${CLAUDE_PROJECT_DIR%/}" in */.claude|*\\.claude) false ;; *) true ;; esac; then
   CCGS_ROOT="$CLAUDE_PROJECT_DIR"
 else
   CCGS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
@@ -46,6 +49,16 @@ if [ -f "project.yaml" ] && [ -f ".claude/hooks/yaml-helper.sh" ]; then
   ENGINE_NAME=$(get_yaml_key project.yaml engine.name 2>/dev/null)
   if [ -n "$ENGINE_NAME" ]; then
     FRESH_PROJECT=false
+  fi
+  # A project that names its own code root (engine.code_root, often `.` for a
+  # flat web game with no engine set) is set up, whatever its folders are
+  # called. The source-file test below only looks in src/, Assets/ and Source/.
+  # A key that is set but unusable (`<TAB>invalid<TAB><reason>`) counts too: the
+  # project named a code root, and session-start already says NOT ASSESSED for it.
+  if [ "$FRESH_PROJECT" = true ]; then
+    case "$(resolve_code_root 2>/dev/null)" in
+      *"	engine.code_root"|"	invalid	"*) FRESH_PROJECT=false ;;
+    esac
   fi
 fi
 if [ "$FRESH_PROJECT" = true ] && [ -f ".claude/docs/technical-preferences.md" ]; then
@@ -172,18 +185,20 @@ fi
 #
 # Resolved AFTER the fresh-project early-exit, so a brand-new project never
 # pays for the lookup.
-if command -v resolve_code_root >/dev/null 2>&1; then
-  CODE_ROOT=$(resolve_code_root 2>/dev/null | cut -f1)
-else
-  CODE_ROOT=""
-fi
+_DG_CR=""
+command -v resolve_code_root >/dev/null 2>&1 && _DG_CR=$(resolve_code_root 2>/dev/null)
+CODE_ROOT=$(printf '%s' "$_DG_CR" | cut -f1)
 
 # A doc check that cannot locate the code root has not established that there
 # are no gaps -- it has established nothing (obligation 1 and 3 of
 # .claude/rules/skill-authoring.md). Announce it, once, and only when the checks
 # would otherwise have had somewhere to look.
 if [ "$DOC_CHECKS" = true ] && [ -z "$CODE_ROOT" ]; then
-  if [ -d src ] || [ -d Assets ] || [ -d Source ]; then
+  if [ "$(printf '%s' "$_DG_CR" | cut -f2)" = invalid ]; then
+    echo "ℹ️  NOT CHECKED: the code root is invalid ($(printf '%s' "$_DG_CR" | cut -f3))."
+    echo "    Checks 1, 3 and 4 (design and architecture docs for existing code) did NOT run."
+    echo "    Suggested action: fix engine.code_root in project.yaml, or remove it to use the engine's folder"
+  elif [ -d src ] || [ -d Assets ] || [ -d Source ]; then
     echo "ℹ️  NOT CHECKED: code exists but the code root is ambiguous (engine.name unset, and the tree does not name one unambiguously)."
     echo "    Checks 1, 3 and 4 (design and architecture docs for existing code) did NOT run."
     echo "    Suggested action: /setup-engine, or set engine.name in project.yaml"
@@ -193,23 +208,30 @@ fi
 # --- Check 1: Substantial codebase but sparse design docs ---
 if [ -n "$CODE_ROOT" ] && [ -d "$CODE_ROOT" ]; then
   # Count source files (cross-platform, handles Windows paths)
-  SRC_FILES=$(find "$CODE_ROOT" -type f \( -name "*.gd" -o -name "*.cs" -o -name "*.cpp" -o -name "*.c" -o -name "*.h" -o -name "*.hpp" -o -name "*.rs" -o -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.tsx" \) 2>/dev/null | wc -l)
+  # code_root_find is find, except that a root of `.` skips the framework's folders.
+  SRC_FILES=$(code_root_find "$CODE_ROOT" -type f \( -name "*.gd" -o -name "*.cs" -o -name "*.cpp" -o -name "*.c" -o -name "*.h" -o -name "*.hpp" -o -name "*.rs" -o -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.tsx" \) | wc -l)
 else
   SRC_FILES=0
 fi
 
+# Only the GDDs at the top of design/gdd/ count, as in the commit check: copies
+# in a subfolder such as archive/ are not the project's design.
 if [ -d "design/gdd" ]; then
-  DESIGN_FILES=$(find design/gdd -type f -name "*.md" 2>/dev/null | wc -l)
+  DESIGN_FILES=$(find design/gdd -maxdepth 1 -type f -name "*.md" 2>/dev/null | wc -l)
+  SUB_DESIGN_FILES=$(find design/gdd -mindepth 2 -type f -name "*.md" 2>/dev/null | wc -l)
 else
   DESIGN_FILES=0
+  SUB_DESIGN_FILES=0
 fi
 
 # Normalize whitespace from wc output
 SRC_FILES=$(echo "$SRC_FILES" | tr -d ' ')
 DESIGN_FILES=$(echo "$DESIGN_FILES" | tr -d ' ')
+SUB_DESIGN_FILES=$(echo "$SUB_DESIGN_FILES" | tr -d ' ')
 
 if [ "$DOC_CHECKS" = true ] && [ "$SRC_FILES" -gt 50 ] && [ "$DESIGN_FILES" -lt 5 ]; then
   echo "⚠️  GAP: Substantial codebase ($SRC_FILES source files) but sparse design docs ($DESIGN_FILES files)"
+  [ "$SUB_DESIGN_FILES" -gt 0 ] && echo "    Not counted: $SUB_DESIGN_FILES .md file(s) in design/gdd/ subfolders (such as archive/)"
   echo "    Suggested action: /reverse-document design ${CODE_ROOT:-<code root>}/[system]"
   echo "    Or run: /project-stage-detect to get full analysis"
 fi
@@ -224,8 +246,8 @@ if [ -d "prototypes" ]; then
       # Normalize path separators for Windows
       proto_dir=$(echo "$proto_dir" | sed 's|\\|/|g')
 
-      # Check for README.md or CONCEPT.md
-      if [ ! -f "${proto_dir}/README.md" ] && [ ! -f "${proto_dir}/CONCEPT.md" ]; then
+      # Check for README.md or CONCEPT.md; a one-shot from /prototype keeps its brief.md instead
+      if [ ! -f "${proto_dir}/README.md" ] && [ ! -f "${proto_dir}/CONCEPT.md" ] && [ ! -f "${proto_dir}/brief.md" ]; then
         proto_name=$(basename "$proto_dir")
         UNDOCUMENTED_PROTOS+=("$proto_name")
       fi
@@ -234,7 +256,7 @@ if [ -d "prototypes" ]; then
     if [ ${#UNDOCUMENTED_PROTOS[@]} -gt 0 ]; then
       echo "⚠️  GAP: ${#UNDOCUMENTED_PROTOS[@]} undocumented prototype(s) found:"
       for proto in "${UNDOCUMENTED_PROTOS[@]}"; do
-        echo "    - prototypes/$proto/ (no README or CONCEPT doc)"
+        echo "    - prototypes/$proto/ (no README, CONCEPT doc or brief)"
       done
       echo "    Suggested action: /reverse-document concept prototypes/[name]"
     fi
@@ -296,20 +318,28 @@ fi
 
 # --- Check 6: project.stage is behind what is actually on disk ---
 #
-# On the `minimal` path nothing ever advances the stage. Only
-# /gate-check writes it, and the four-step jam route never invokes one -- so a
-# project with stories and running game code keeps reporting `Concept` to the
-# status line, to /help, and to every gate checklist that branches on stage.
+# Only a /gate-check PASS (or a CONCERNS whose risks you accepted) advances
+# the stage. A project that writes stories and game code without running one
+# keeps reporting `Concept` to the status line, to /next-step, and to every gate
+# checklist that branches on stage.
 #
 # This is an OBSERVATION, never a write. CLAUDE.md is explicit that the stage
-# advances on a /gate-check PASS with the user confirming, so a hook that
-# advanced it silently would be the worse bug. Say what is inconsistent and name
+# advances on a /gate-check PASS (or a CONCERNS whose risks you accepted) with
+# the user confirming, so a hook that advanced it silently would be the worse
+# bug. Say what is inconsistent and name
 # the skill that resolves it.
+#
+# Not at `minimal`: nothing on that path runs /gate-check, so a stage that never
+# moves is the design, not a gap. The status line shows story progress there
+# instead, and /next-step routes by the brief -- telling the user to run /gate-check
+# contradicted both.
 STAGE=""
-if [ -f .claude/hooks/yaml-helper.sh ]; then
-    STAGE=$(get_yaml_key project.stage 2>/dev/null)
+if [ "$WORKFLOW" != "minimal" ] && [ -f .claude/hooks/yaml-helper.sh ]; then
+    # get_yaml_key takes the file first; called with the key alone it returned
+    # nothing, and only the legacy stage.txt was ever read.
+    STAGE=$(get_yaml_key project.yaml project.stage 2>/dev/null)
 fi
-[ -z "$STAGE" ] && [ -f production/stage.txt ] && STAGE=$(head -1 production/stage.txt 2>/dev/null | tr -d '
+[ "$WORKFLOW" != "minimal" ] && [ -z "$STAGE" ] && [ -f production/stage.txt ] && STAGE=$(head -1 production/stage.txt 2>/dev/null | tr -d '
 ' | tr -d ' ')
 
 if [ -n "$STAGE" ]; then
@@ -318,8 +348,8 @@ if [ -n "$STAGE" ]; then
       Concept|concept|Pre-Production|"Pre-Production")
         if [ "$STORY_COUNT" -gt 0 ] && [ "$SRC_FILES" -gt 0 ]; then
             echo "⚠️  GAP: project.stage says '$STAGE', but $STORY_COUNT stories and $SRC_FILES source files exist"
-            echo "    The stage only advances on a /gate-check PASS, and nothing on the"
-            echo "    minimal path runs one -- so the status line can sit at '$STAGE' indefinitely."
+            echo "    The stage only advances on a /gate-check PASS (or a CONCERNS whose risks you accepted),"
+            echo "    and none has moved it yet -- so the status line can sit at '$STAGE' indefinitely."
             echo "    Suggested action: /gate-check  (it asks before advancing; this hook never writes the stage)"
         fi
         ;;

@@ -1,6 +1,6 @@
 # Babylon.js Rendering — Quick Reference
 
-Last verified: 2026-09-25 | Engine: Babylon.js 9.28
+Last verified: 2026-11-16 | Engine: Babylon.js 9.36
 
 ## Renderer Selection
 
@@ -178,7 +178,7 @@ Opt-in API; default rendering unchanged.
 | 9.7 | Texture repetition breaking | `material.textureRepetitionMode = Constants.TEXTURE_REPETITION_NOISE_BLEND` (also `_HEX_TILING`, `_TILE_RANDOMIZATION`, `_VORONOI_BOMBING`; default `_NONE`); `textureRepetitionHexTilingParams`. Standard, PBR, OpenPBR. Costs 3–4 texture fetches |
 | 9.12 | SSAO2 with world-space normals; `HALF_FLOAT` vertex buffer type | Additive |
 | 9.12.1 | Scissor test moved to core as an opt-in engine extension | Additive |
-| 9.14 | `HtmlTexture` (WICG HTML-in-Canvas) | `new HtmlTexture(name, element, options)`; ships a polyfill installer. Browser support for the underlying proposal unverified |
+| 9.14 | `HtmlTexture` (WICG HTML-in-Canvas) | `new HtmlTexture(name, element, options)`; ships a polyfill installer (**deprecated 9.36** — import an up-to-date polyfill directly instead, see `deprecated-apis.md`). Browser support for the underlying proposal unverified |
 | 9.16 | GPU particles `emitRateControl` setter | Additive |
 | 9.21.1 | **`FSR1RenderingPipeline`** (AMD FSR 1: EASU upscale + RCAS sharpen) | `new FSR1RenderingPipeline(name, scene, cameras?)`; `scaleFactor`, `sharpnessStops` (default 0.2; 0 = max sharpness), `isSupported`. Runs on WebGPU, WebGL2 (`engine.version >= 2`) and Babylon Native |
 | 9.24 | White balance in image processing | `temperature` (Kelvin) / `tint`; `whiteBalanceEnabled` on `ImageProcessingPostProcess` |
@@ -194,6 +194,24 @@ Frame Graph: 9.x minors continue to extend it (IBL shadows hardening 9.14, splat
 
 Sources: CHANGELOG (https://github.com/BabylonJS/Babylon.js/blob/master/CHANGELOG.md),
 PR https://github.com/BabylonJS/Babylon.js/pull/18723 (FSR 1), `@babylonjs/core` 9.28.0 typings.
+
+## 9.29–9.36 Rendering Changes
+
+| Version | Feature | API / Notes |
+|---|---|---|
+| 9.30 | WebGPU canvas tone mapping / color space | `WebGPUEngineOptions.canvasToneMapping`, `canvasColorSpace` |
+| 9.31.1 | Reverse depth buffer | Engine option `useReverseDepthBuffer?: boolean`; typings recommend it for WebGPU (little gain on WebGL), with `stencil: false` for `depth32float` |
+| 9.31.1 | Gaussian Point Splatting (WebGPU) | Additive |
+| 9.32.1 | CSM cascades in a per-generator uniform buffer for WGSL receivers | `CascadedShadowGenerator` API unchanged |
+| 9.33.0 | GPU frame time via timestamp writes (WebGPU) | Read after the frame's submit |
+| 9.33.0 | Temporal view data (camera history, TAA jitter) in the WGSL scene UBO | Additive |
+| 9.33.1 | KTX2 encoder (Basis Universal) | `KhronosTextureContainer2Encoder` (`Misc/khronosTextureContainer2Encoder`) |
+| 9.33.3 | Bent-normal reflection occlusion | `PBRMaterial.bentNormalTexture` |
+| 9.33.3 | Frames-in-flight limit (WebGPU) | `WebGPUEngine.maxFramesInFlight` (default `0` = no limit) |
+| 9.36 | Indirect draw per sub mesh (WebGPU) | `SubMesh.setIndirectDrawBuffer(buffer, byteOffset, renderPassId)` |
+| 9.36 | Swap a texture's image | `Texture.replaceImage(source: Texture): boolean` |
+
+Sources: CHANGELOG (link above); `@babylonjs/core` 9.36.0 typings.
 
 ## Performance Targets
 

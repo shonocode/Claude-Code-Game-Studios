@@ -2,7 +2,9 @@
 
 ## Trigger
 
-Runs before any commit that modifies files in `src/`.
+Runs before any commit that modifies files under the code root — `src/`
+(Godot, Web), `Assets/` (Unity) or `Source/` (Unreal); see
+`.claude/docs/code-root-resolution.md`.
 
 ## Purpose
 
@@ -17,14 +19,27 @@ values that should be data-driven.
 # Pre-commit hook: Code quality checks
 # Adapt the specific checks to your language and tooling
 
-CODE_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^src/')
+# The code root depends on the engine; resolve it the way the shipped commit
+# check does. An unresolved root is reported, never guessed as src/.
+. "$(git rev-parse --show-toplevel)/.claude/hooks/yaml-helper.sh"
+_CR=$(resolve_code_root)
+CODE_ROOT=$(printf '%s' "$_CR" | cut -f1)
+if [ -z "$CODE_ROOT" ]; then
+    # Field 3 holds the reason when engine.code_root is set but unusable.
+    echo "SKIPPED: no code root $(printf '%s' "$_CR" | cut -f3) — code checks did not run. Set engine.name, or fix engine.code_root, in project.yaml."
+    exit 0
+fi
+
+# code_root_filter, not grep "^$CODE_ROOT/": a root of `.` (a flat web game)
+# would read as the regex ^./ and match the wrong files.
+CODE_FILES=$(git diff --cached --name-only --diff-filter=ACM | code_root_filter "$CODE_ROOT")
 
 EXIT_CODE=0
 
 if [ -n "$CODE_FILES" ]; then
     for file in $CODE_FILES; do
         # Check for hardcoded magic numbers in gameplay code
-        if [[ "$file" == src/gameplay/* ]]; then
+        if [[ "$file" == */[Gg]ameplay/* ]]; then
             # Look for numeric literals that are likely balance values
             # Adjust the pattern for your language
             if grep -nE '(damage|health|speed|rate|chance|cost|duration)[[:space:]]*[:=][[:space:]]*[0-9]+' "$file"; then

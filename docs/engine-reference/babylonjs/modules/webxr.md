@@ -1,6 +1,6 @@
 # Babylon.js WebXR — Quick Reference
 
-Last verified: 2026-09-25 | Engine: Babylon.js 9.28
+Last verified: 2026-11-16 | Engine: Babylon.js 9.36
 
 WebXR is a Babylon.js core strength. This document captures the current state
 of XR support, device targets, and feature availability.

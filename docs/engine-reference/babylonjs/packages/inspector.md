@@ -1,6 +1,6 @@
 # @babylonjs/inspector — Package Reference
 
-Last verified: 2026-09-25 | Package: `@babylonjs/inspector` (matched to Babylon.js 9.28)
+Last verified: 2026-11-16 | Package: `@babylonjs/inspector` (matched to Babylon.js 9.36)
 
 ## Purpose
 
@@ -87,7 +87,22 @@ window.addEventListener("keydown", async (e) => {
 - 9.9.0 fixed Havok WASM serving inside Inspector v2.
 
 Source: CHANGELOG (https://github.com/BabylonJS/Babylon.js/blob/master/CHANGELOG.md).
-"Babylon Lite" is not described further in the sources checked — unverified what it is.
+"Babylon Lite" = the `@babylonjs/lite` package; see 9.29–9.36 below.
+
+### Added in 9.29–9.36
+
+- **Inspector Lite** is the `@babylonjs/inspector/lite` export (`package.json`
+  `exports`: `.`, `./lite`). It needs `@babylonjs/lite` — an optional peer
+  (`^1.38.1`), described on npm as a WebGPU-first library derived from
+  Babylon.js. Panels added: animation (9.31.1), GPU picking (9.31.1), transform
+  gizmos and statistics/GPU performance (9.31.3), debug helpers/capture tools
+  (9.32.0), Flow Graphs explorer (9.32.1), skeleton/morph/particles (9.33.0),
+  physics (9.34), audio engine (9.35).
+- The default export is still Inspector v2; nothing in this span changes how
+  it loads.
+
+Sources: CHANGELOG; `@babylonjs/inspector` 9.36.0 `package.json`;
+https://registry.npmjs.org/@babylonjs/lite.
 
 ## Common Patterns
 

@@ -2,19 +2,19 @@
 
 | Field | Value |
 |-------|-------|
-| **Engine Version** | Babylon.js 9.28 |
+| **Engine Version** | Babylon.js 9.36 |
 | **Installed at pin time** | NOT DETERMINED — no `package.json` / `node_modules` existed in the repo at pin time, so no installed `@babylonjs/core` version could be probed. Run `npm ls @babylonjs/core` once the project is scaffolded and record the result here. |
-| **Release Date** | 9.0.0: 2026-03-26; 9.28.0: 2026-09-24 (npm publish dates) |
-| **Project Pinned** | 2026-09-25 |
-| **Last Docs Verified** | 2026-09-25 |
+| **Release Date** | 9.0.0: 2026-03-26; 9.36.0: 2026-11-12 (npm publish dates) |
+| **Project Pinned** | 2026-11-16 |
+| **Last Docs Verified** | 2026-11-16 |
 | **LLM Knowledge Cutoff** | May 2026 |
 
 ## Knowledge Gap Warning
 
 The LLM's training data likely covers Babylon.js up to ~8.x / early 9.x. 9.0
 (March 2026) sits roughly at the edge of the cutoff; the 9.x minors released
-after it — and in particular everything from 9.6 (May 2026) through 9.28
-(September 2026) — are post-cutoff and the model does NOT know about them.
+after it — and in particular everything from 9.6 (May 2026) through 9.36
+(November 2026) — are post-cutoff and the model does NOT know about them.
 Always cross-reference this directory before suggesting Babylon.js API calls.
 
 Treat the 9.0 feature set as "near cutoff, verify": AudioEngine v2 (8.0),
@@ -30,7 +30,12 @@ decorators, 9.15), camera `InputMapper` / framerate-independent camera movement
 / `RootMotionController` (9.28), `FSR1RenderingPipeline` (9.21.1), GUI
 `FlexPanel` + em/rem units (9.26), and the WebXR additions of 9.16–9.24
 (persistent anchors, room capture, depth sensing pause/resume, haptics,
-viewport scaling, tracked sources, WebGPU XR plumbing).
+viewport scaling, tracked sources, WebGPU XR plumbing), and the 9.29–9.36
+additions: `useReverseDepthBuffer` engine option (9.31.1), WebGPU
+`canvasToneMapping` / `canvasColorSpace` (9.30), `WebGPUEngine.maxFramesInFlight`
+(9.33.3), `KhronosTextureContainer2Encoder` (9.33.1), `PBRMaterial.bentNormalTexture`
+(9.33.3), `SubMesh.setIndirectDrawBuffer` and `Texture.replaceImage` (9.36), and
+Inspector Lite (`@babylonjs/inspector/lite`).
 
 ## Installed-Version Gap Warning
 
@@ -53,6 +58,7 @@ means the gap is unknown, not absent.
 | 9.15 - 9.19 | 2026-07-02 → 2026-07-30 | HIGH | **TC39 Stage 3 decorators (official breaking change, 9.15)**; `.pure` split side-effect regressions fixed in 9.16.0 / 9.17.1 / 9.19.0; `KHR_gaussian_splatting` (9.16); WebGPU-XR plumbing (9.16); Havok world-region options (9.19.1) |
 | 9.20 - 9.25 | 2026-08-06 → 2026-09-03 | HIGH | FSR 1 upscaling pipeline (9.21.1), WebXR: WebGPU quad layers + CPU depth (9.20.1), persistent anchors / room capture / semantic labels (9.23), depth-sensing pause/resume, haptics, viewport scaling, tracked sources (9.24), white balance in image processing (9.24) |
 | 9.26 - 9.28 | 2026-09-10 → 2026-09-24 | HIGH | OpenUSD WASM loader (9.26), GUI `FlexPanel` + em/rem units (9.26), FBX loader overhaul (9.26.1), dithered tile fade plugin, mesh blending post-process (9.26.x), `KHR_interactivity` export (9.27), occlusion query visibility API (9.27.1), root motion (9.28) |
+| 9.29 - 9.36 | 2026-10-01 → 2026-11-12 | MEDIUM | No official breaking changes. WebGPU canvas tone mapping / color space (9.30), `useReverseDepthBuffer` + Gaussian Point Splatting on WebGPU (9.31.1), KTX2 encoder (9.33.1), `KHR_materials_scatter` (9.33.0), GPU frame time via timestamp writes (9.33.0), bent-normal reflection occlusion + `maxFramesInFlight` + SPZ-compressed splats (9.33.3), Inspector Lite growth (9.31–9.35), `SubMesh.setIndirectDrawBuffer`, `Texture.replaceImage`, HTML-in-Canvas polyfill installer deprecated (9.36); many WebGPU / Native fixes |
 
 Release dates are npm publish dates of `@babylonjs/core` (`curl -s https://registry.npmjs.org/@babylonjs/core`).
 
@@ -74,14 +80,14 @@ Release dates are npm publish dates of `@babylonjs/core` (`curl -s https://regis
 ## Minor Version Policy
 
 Babylon.js ships a new **minor** every Thursday from master, with patch releases
-in between; older minors are **not** back-patched (a fix in 9.28.x will not land
-in 9.27.x). Upstream guarantees no public-API breaking changes between minors
+in between; older minors are **not** back-patched (a fix in 9.36.x will not land
+in 9.35.x). Upstream guarantees no public-API breaking changes between minors
 except when forced by browser API changes — but the 9.15 decorator migration is
 an officially documented exception (see `breaking-changes.md`), so re-verify on
 every minor bump. (Source: Framework Versions page above.)
 
-This project pins to a Babylon.js **minor** version (currently 9.28). Patch
-updates within 9.28.x are auto-acceptable; 9.29 → ... requires updating this
+This project pins to a Babylon.js **minor** version (currently 9.36). Patch
+updates within 9.36.x are auto-acceptable; 9.37 → ... requires updating this
 file and re-verifying all module references.
 
-To upgrade: run `/setup-engine upgrade 9.28 [target]` and follow the guided flow.
+To upgrade: run `/setup-engine upgrade 9.36 [target]` and follow the guided flow.

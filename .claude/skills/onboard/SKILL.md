@@ -15,6 +15,8 @@ every file write follows `.claude/docs/automation-modes.md`
 (collaborative asks always · guided major-only · autonomous logs and proceeds;
 `automation_always_ask` categories always prompt).
 
+# Onboard
+
 ## Insufficient input — check this before producing any report
 
 **If the inputs this skill needs do not exist, the answer is "could not run" —
@@ -33,11 +35,10 @@ not a filled-in report.** Check first, and stop if the check fails.
 
 **A verdict of `NOT ASSESSED` is a success.** It is the correct, useful answer to
 "what does the data say?" when there is no data. The failure mode this prevents is
-specific and has been observed in practice: report templates whose verdict
-enum had no "could not run" state produced **false clean passes** — an asset audit
-returning COMPLIANT on a project with no assets and no standards, and a
-performance profile reporting ">99% headroom against a 16.67ms budget" with zero
-profiler data and no budget ever set.
+specific: a report whose verdict enum has no "could not run" state produces
+**false clean passes** — an asset audit returning COMPLIANT on a project with no
+assets and no standards, or a performance profile reporting ">99% headroom against
+a 16.67ms budget" with zero profiler data and no budget ever set.
 
 **Absence of evidence is never evidence of absence.** A scan that finds no
 matches because there are no files to scan has not verified anything. Say which of
@@ -51,15 +52,21 @@ Read CLAUDE.md for project overview and standards.
 
 Read the relevant agent definition from `.claude/agents/` if a specific role is specified.
 
+`CLAUDE.md` and `.claude/agents/` ship with the framework — no skill creates them. If either is missing, report it as missing from the install.
+
 ---
 
 ## Phase 2: Scan Relevant Area
 
-- For programmers: scan the code root (resolve per `.claude/docs/code-root-resolution.md`) for architecture, patterns, key files
+- For programmers: scan the code root (resolve per `.claude/docs/code-root-resolution.md`) for architecture, patterns, key files. An unresolved root means the scan did not run: the sections it feeds read `NOT ASSESSED — code root unresolved`, never a guess at `src/`
 - For designers: scan `design/` for existing design documents
 - For narrative: scan `design/narrative/` for world-building and story docs
-- For QA: scan `tests/` for existing test coverage
+- For QA: scan `tests/` for existing test coverage (`/test-setup` creates it)
 - For production: scan `production/` for current sprint and milestone
+- **No role or area given**: a general orientation — list the top level of `design/`,
+  `docs/architecture/`, `production/` and the code root, read
+  `production/session-state/active.md` if it exists, and say that a role would
+  focus the next pass (e.g. `/onboard programmer`)
 
 Read recent changes (git log if available) to understand current momentum.
 
@@ -91,7 +98,9 @@ Read recent changes (git log if available) to understand current momentum.
 [Summary of conventions relevant to this role from CLAUDE.md and agent definition]
 
 ## Current State of Your Area
-[What has been built, what is in progress, what is planned next]
+[What has been built, what is in progress, what is planned next. Name what
+Phase 2 found by path — for a designer, each existing GDD and design doc — or
+say it found none]
 
 ## Current Sprint Context
 [What the team is working on now and what is expected of this role]
@@ -131,4 +140,4 @@ Verdict: **COMPLETE** — onboarding document generated.
 
 - Share the onboarding doc with the new contributor before their first session.
 - Run `/sprint-status` to show the new contributor current progress.
-- Run `/help` if the contributor needs guidance on what to work on next.
+- Run `/next-step` if the contributor needs guidance on what to work on next.

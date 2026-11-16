@@ -1,6 +1,6 @@
 # Babylon.js — Breaking Changes Reference
 
-Last verified: 2026-09-25 | Engine: Babylon.js 9.28
+Last verified: 2026-11-16 | Engine: Babylon.js 9.36
 
 This file summarizes the major breaking changes between LLM training data
 (~7.x) and the pinned version. For the canonical list, always check
@@ -193,6 +193,38 @@ https://github.com/BabylonJS/Babylon.js/pull/18631, https://github.com/BabylonJS
 - FlexPanel/em/rem: https://github.com/BabylonJS/Babylon.js/pull/18881 — AudioV2 distance-only: https://github.com/BabylonJS/Babylon.js/pull/18462
 - WebGPU XR: https://github.com/BabylonJS/Babylon.js/pull/18650
 
+## 9.28 → 9.36 (October–November 2026 — POST-CUTOFF)
+
+The CHANGELOG has **no `[Breaking Change]` entries** for 9.29.0 through 9.36.0.
+Everything below is additive or a fix. Versions come from the CHANGELOG
+(https://github.com/BabylonJS/Babylon.js/blob/master/CHANGELOG.md); API names
+were checked against the published `@babylonjs/core` / `@babylonjs/loaders` /
+`@babylonjs/inspector` 9.36.0 `.d.ts` files and `package.json`.
+
+| Version | Subsystem | Change | Details |
+|---------|-----------|--------|---------|
+| 9.30 | WebGPU | Canvas tone mapping / color space | `WebGPUEngineOptions.canvasToneMapping?: GPUCanvasToneMapping` and `canvasColorSpace?: PredefinedColorSpace` (#18967). Additive. |
+| 9.31.1 | Engine | `useReverseDepthBuffer` creation option | `useReverseDepthBuffer?: boolean` on engine options (#19010). Typings: recommended for WebGPU, little gain on WebGL; pair with `stencil: false` to get `depth32float`. |
+| 9.31.1 | Shadows | "Support cascaded shadow maps" (#19001) | `CascadedShadowGenerator(mapSize, light, usefulFloatFirst?, camera?, useRedTextureType?)` and `static IsSupported` exist in 9.36.0 typings, but the class predates 9.31 — the PR's exact scope is **unverified** (likely Native). 9.32.1 adds a per-generator cascade uniform buffer for WGSL receivers (#19037). |
+| 9.31.1 | Gaussian splatting | Gaussian Point Splatting (WebGPU) | #18962. Additive. |
+| 9.33.0 | WebGPU | GPU frame time via timestamp writes | #19066, read after the frame's submit. |
+| 9.33.0 | Loaders | `KHR_materials_scatter` import/export | #18810, `@babylonjs/loaders` `glTF/2.0/Extensions/KHR_materials_scatter`. |
+| 9.33.1 | Textures | KTX2 encoder (Basis Universal) | `KhronosTextureContainer2Encoder` in `@babylonjs/core/Misc/khronosTextureContainer2Encoder` (#19011). |
+| 9.33.3 | Materials | Bent-normal reflection occlusion | `PBRMaterial.bentNormalTexture` (#19069). |
+| 9.33.3 | WebGPU | `maxFramesInFlight` | `WebGPUEngine.maxFramesInFlight: number`, default `0` = no limit, opt-in (#19093). |
+| 9.33.3 | Loaders | SPZ-compressed glTF Gaussian splats | `KHR_gaussian_splatting_compression_spz` (#19106). |
+| 9.31 → 9.35 | Inspector | Inspector Lite | `@babylonjs/inspector/lite` export; needs the optional peer `@babylonjs/lite` (`^1.38.1`). Gained animation, GPU picking, gizmos, stats, physics (9.34) and audio (9.35) panels. Inspector v2 (default export) unchanged. |
+| 9.36 | Meshes | `SubMesh.setIndirectDrawBuffer(buffer, byteOffset, renderPassId)` | GPU-written draw arguments per render pass, WebGPU (#19097). |
+| 9.36 | Textures | `Texture.replaceImage(source: Texture): boolean` | Take the image of another, already loaded texture (#19099). |
+| 9.36 | Textures | `InstallHtmlInCanvasPolyfill` deprecated | See `deprecated-apis.md` "9.28 → 9.36" (#19132). |
+| 9.29 | WebXR | Default XR entry errors documented for WebGPU recovery | #18940, flagged Bug Fix. |
+
+Fixes worth knowing when upgrading from 9.28: many WebGPU correctness fixes
+(context-loss effect rebuild 9.35, cached draws invalidated on vertex buffer
+change 9.33.3, `WebGPUEngine.dispose()` after failed init 9.32.1, geometry
+rebuild on buffer restore 9.32.1), FBX import memory / animation fixes (9.32.1,
+9.33.3), and glTF Draco normalized override without workers (9.36).
+
 ## What Generally Did NOT Change
 
 - ESM scoped imports (`@babylonjs/core/...`) work the same way 7→8→9
@@ -200,7 +232,7 @@ https://github.com/BabylonJS/Babylon.js/pull/18631, https://github.com/BabylonJS
 - glTF/glb loading is unchanged (USDz is additive)
 - Observer pattern (`Observable`/`Observer`) is unchanged
 - Disposal semantics (`dispose()`) are unchanged
-- 9.5 → 9.28: default (non-`.pure`) imports keep running their side effects exactly as before
+- 9.5 → 9.36: default (non-`.pure`) imports keep running their side effects exactly as before
 
 ## Migration Checklist for Code Last Touched on 7.x
 
@@ -213,9 +245,15 @@ https://github.com/BabylonJS/Babylon.js/pull/18631, https://github.com/BabylonJS
 
 ## Migration Checklist for Code Last Touched on 9.5
 
-1. Bump **all** `@babylonjs/*` packages together to 9.28.x (`npm ls @babylonjs/core` shows one version)
+1. Bump **all** `@babylonjs/*` packages together to 9.36.x (`npm ls @babylonjs/core` shows one version)
 2. Grep for Babylon decorators on your own classes (`@serialize`, `@expandToProperty`, `@addAccessorsForMaterialProperty`, `@editableInPropertyPage`) — apply the 9.15 migration above; confirm `experimentalDecorators` is not `true`
 3. If adopting `@babylonjs/core/pure`, call the matching `Register*()` helpers (at minimum `RegisterStandardEngineExtensions()`), then smoke-test shadows, `.babylon` loading and loaders
 4. Re-check camera feel (inertia, high-refresh displays, non-default `speed`) — Free/Fly/ArcRotate movement changed in 9.12.1 / 9.14
 5. If using `@babylonjs/loaders` USD: self-host the USD worker/WASM (`workerUrl`/`glueUrl`/`wasmUrl`) instead of the CDN default
 6. Run a full visual + XR smoke test on target devices
+
+## Migration Checklist for Code Last Touched on 9.28
+
+1. Bump **all** `@babylonjs/*` packages together to 9.36.x (no official breaking changes in 9.29–9.36)
+2. If you call `InstallHtmlInCanvasPolyfill` / `UninstallHtmlInCanvasPolyfill`, switch to importing an up-to-date polyfill directly before creating the engine (9.36 deprecation)
+3. Smoke-test on WebGPU and WebGL2 — the span is dominated by WebGPU fixes, which can change output that relied on the old behaviour

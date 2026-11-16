@@ -1,6 +1,6 @@
 # @babylonjs/havok — Package Reference
 
-Last verified: 2026-09-25 | Package: `@babylonjs/havok` (matched to Babylon.js 9.28)
+Last verified: 2026-11-16 | Package: `@babylonjs/havok` (matched to Babylon.js 9.36)
 
 ## Purpose
 
@@ -22,7 +22,7 @@ Pin the version to match `@babylonjs/core`:
 ```jsonc
 {
   "dependencies": {
-    "@babylonjs/core": "9.28.x",
+    "@babylonjs/core": "~9.36.0",
     "@babylonjs/havok": "1.x"   // Havok versions independently of core
   }
 }

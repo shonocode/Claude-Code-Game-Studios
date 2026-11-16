@@ -12,16 +12,16 @@
 │   └── engine-reference/        # Curated engine API snapshots (version-pinned)
 ├── tests/                       # Game test suites (unit, integration, performance, playtest)
 ├── tools/                       # Build and pipeline tools (ci, build, asset-pipeline)
-├── prototypes/                  # Throwaway prototypes (isolated from src/)
+├── prototypes/                  # One-shot games, throwaway prototypes (outside the code root)
 ├── production/                  # Production management (sprints, milestones, releases)
 │   ├── session-state/           # Ephemeral session state (active.md — gitignored)
 │   └── session-logs/            # Session audit trail (gitignored)
-└── CCGS Skill Testing Framework/ # QA for the skills/agents themselves — /skill-test, /skill-improve
+└── studio-tests/                # QA for the skills/agents themselves — /skill-test, /skill-improve
 ```
 
 ## The code root is engine-specific
 
-**Two of the four supported engines will not build a project whose code sits in
+**Two of the five supported engines will not build a project whose code sits in
 `src/`.** This is not a style preference — it is a hard constraint of the engine's
 own toolchain:
 
@@ -30,15 +30,24 @@ own toolchain:
 | **Godot** | `src/` | No constraint — Godot loads from `res://` anywhere under the project root. |
 | **Unity** | `Assets/` | Unity compiles **only** `Assets/` and `Packages/`. Code outside them is invisible to the compiler. |
 | **Unreal** | `Source/<Module>/` | UnrealBuildTool discovers modules under `Source/`; content lives in `Content/`. A module elsewhere is not built. |
+| **Web** | `src/` | No constraint — Vite builds what `index.html` imports. |
 | **BabylonJS** | `src/` | No engine constraint — Vite's convention; `index.html` loads `/src/main.ts` and `tsconfig.json` includes `src`. `package.json`, `vite.config.ts` and `index.html` sit at the repo root; static files Vite serves verbatim go in `public/`. |
 
-**Resolve the code root from `engine.name` before writing any source file.** Where
-a skill, rule or template says `src/`, read it as *"the code root"* and substitute
-the row above. `src/` is the table's Godot and Babylon.js row, not a universal path.
+**Resolve the code root from `engine.name` before writing any source file.** A
+path shown as `src/…` alone is a Godot example: read it as *"the code root"* and
+substitute the row above. `src/` is the table's Godot, Web and Babylon.js row, not a universal path.
 
-> **Known residual — do not read `src/` as settled.** Roughly 30 files under
-> `.claude/` still name `src/` literally, because they were written when Godot was
-> the only engine walked end to end. They are correct for Godot and Babylon.js
-> and wrong for Unity and Unreal. This section is the authority; those files are the default. The
-> breakage is real, not theoretical — a Unity tree laid out this way does not
-> compile, and an Unreal one produces a module no `.uproject` can consume.
+**Tests follow the same rule** — the same compilers decide what they see:
+
+| `engine.name` | Test root | Anywhere else |
+|---|---|---|
+| **Godot** | `tests/unit/`, `tests/integration/` | — |
+| **Unity** | `Assets/Tests/EditMode/`, `Assets/Tests/PlayMode/` | not compiled: "0 tests, Passed" |
+| **Unreal** | `Source/<Module>/Private/Tests/` | not built: "No automation tests matched" |
+| **Web** | `tests/unit/` (Vitest), `tests/integration/` (Playwright) | — |
+| **BabylonJS** | `tests/unit/` (Vitest), `tests/integration/` (Playwright) | — |
+
+The rows are the engine table, `.claude/engines/engines.tsv`; `engine.code_root`
+and `engine.test_root` override them.
+
+Read `tests/unit/[system]/` (or `integration/`) anywhere as the test root plus `[System]/`.

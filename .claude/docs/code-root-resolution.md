@@ -1,9 +1,8 @@
 # Code Root Resolution
 
 Shared procedure for any skill that reads, scans, counts or writes game source
-files. Referenced from the point of use in each such skill. Those skills keep
-the one load-bearing imperative inline — **an unresolved code root means the
-check did not run** — and cite this file for the resolution order.
+files. **An unresolved code root means the check did not run.** This file gives
+the resolution order.
 
 `.claude/docs/directory-structure.md` is the authority for which directory holds
 code. This file is the procedure for applying it.
@@ -15,19 +14,37 @@ code. This file is the procedure for applying it.
 | Godot | `src/` | No constraint; Godot loads from `res://` anywhere under the project root |
 | Unity | `Assets/` | Unity compiles **only** `Assets/` and `Packages/` |
 | Unreal | `Source/<Module>/` | UnrealBuildTool discovers modules under `Source/`; content lives in `Content/` |
+| Web | `src/` | No constraint; Vite builds from what `index.html` imports |
 | BabylonJS | `src/` | No engine constraint; `src/` is the Vite convention `index.html` and `tsconfig.json` point at |
 
-`src/` is the **Godot and Babylon.js rows of that table, not a universal path.**
+The hooks and helpers read these from the engine table, `.claude/engines/engines.tsv`;
+a skill reads the row with `resolve_config --keys engine_row`.
+
+`src/` is the **Godot, Web and Babylon.js rows of that table, not a universal path.**
 
 ## Resolution order
 
+0. `engine.code_root` in `project.yaml` (never `project.local.yaml`): the
+   project's own folder, such as `scripts` for a Godot project that keeps its
+   code there, or `.` for a flat web game whose `index.html` sits at the project
+   root. It beats the engine's folder. A value that cannot be used — a folder
+   that does not exist, one spelled with different capitals on disk, `..`, an
+   absolute path, or a framework folder such as `docs` or `.claude` — makes the
+   root **invalid**: it does **not** fall back to the engine's folder, because a
+   typo that quietly read `src/` would scan nothing and look clean. An empty
+   value, a `[...]` placeholder or YAML's null (`~`, `null`) is unset, not
+   invalid.
 1. `engine.name` from `project.local.yaml`, then `project.yaml`.
 2. The legacy mirror: an `Engine:` line in
    `.claude/docs/technical-preferences.md`. A value of `[TO BE CONFIGURED]`
    does not count. A legacy `Babylon.js` value resolves as `BabylonJS`.
 3. Derivation from the tree, but **only when it is unambiguous**. Exactly one of
    `src/`, `Assets/` or `Source/` present means that is the root. Two or more
-   present means the project is genuinely undecidable — do not guess.
+   present means the project is genuinely undecidable — do not guess. Compare the
+   names exactly as the directory listing spells them: on Windows and default
+   macOS an existence test for `Assets/` also succeeds on Godot's own `assets/`,
+   which would make `src/` + `assets/` look ambiguous and a lone `assets/` look
+   like Unity.
 4. Otherwise: **unresolved.**
 
 The hooks already implement exactly this as `resolve_code_root()` in
@@ -41,7 +58,15 @@ This is the rule the whole file exists for, and it is obligation 2 of
 permissive one.
 
 **For a read or scan:** report `NOT ASSESSED — code root unresolved` and say
-which check did not run. Never report zero hits.
+which check did not run. Never report zero hits. For an invalid
+`engine.code_root`, say `NOT ASSESSED — code root invalid` with the reason
+`resolve_code_root` gives in its third field.
+
+**A root of `.`** (the project root itself) never scans the framework's own
+folders: `.claude`, `.git`, `production`, `design`, `docs`, `tests`,
+`studio-tests`, `prototypes`, `tools`, `node_modules` and `dist`. The hooks use
+`code_root_filter` and `code_root_find` from `yaml-helper.sh` for this; a skill
+that globs the root leaves those folders out the same way.
 
 A scan anchored to a root the project does not use matches nothing, and
 **nothing is indistinguishable from a clean result.** A localization check finds

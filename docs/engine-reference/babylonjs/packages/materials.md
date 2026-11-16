@@ -1,6 +1,6 @@
 # @babylonjs/materials — Package Reference
 
-Last verified: 2026-09-25 | Package: `@babylonjs/materials` (matched to Babylon.js 9.28)
+Last verified: 2026-11-16 | Package: `@babylonjs/materials` (matched to Babylon.js 9.36)
 
 ## Purpose
 
@@ -21,8 +21,8 @@ Match version to `@babylonjs/core`:
 ```jsonc
 {
   "dependencies": {
-    "@babylonjs/core": "9.28.x",
-    "@babylonjs/materials": "9.28.x"
+    "@babylonjs/core": "~9.36.0",
+    "@babylonjs/materials": "~9.36.0"
   }
 }
 ```

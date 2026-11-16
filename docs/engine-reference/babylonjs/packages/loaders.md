@@ -1,6 +1,6 @@
 # @babylonjs/loaders — Package Reference
 
-Last verified: 2026-09-25 | Package: `@babylonjs/loaders` (matched to Babylon.js 9.28)
+Last verified: 2026-11-16 | Package: `@babylonjs/loaders` (matched to Babylon.js 9.36)
 
 ## Purpose
 
@@ -21,8 +21,8 @@ Match version to `@babylonjs/core`:
 ```jsonc
 {
   "dependencies": {
-    "@babylonjs/core": "9.28.x",
-    "@babylonjs/loaders": "9.28.x"
+    "@babylonjs/core": "~9.36.0",
+    "@babylonjs/loaders": "~9.36.0"
   }
 }
 ```
@@ -58,7 +58,7 @@ import "@babylonjs/loaders";
 
 ## Loading Patterns
 
-> The `SceneLoader` class is `@deprecated` (9.5 and 9.28 typings). Use the
+> The `SceneLoader` class is `@deprecated` (9.5, 9.28 and 9.36 typings). Use the
 > module-level functions from `@babylonjs/core/Loading/sceneLoader`. Options:
 > `rootUrl`, `onProgress`, `pluginExtension`, `name`, `pluginOptions`.
 
@@ -139,7 +139,8 @@ Source: https://github.com/BabylonJS/Babylon.js/pull/18907
 - `KHR_animation_pointer` — animation targets beyond standard properties
 - `EXT_meshopt_compression` — Meshopt compression
 - `MSFT_lod` — Microsoft LOD extension
-- `KHR_gaussian_splatting` — Gaussian splats in glTF (9.16+)
+- `KHR_gaussian_splatting` — Gaussian splats in glTF (9.16+); SPZ-compressed splats via `KHR_gaussian_splatting_compression_spz` (9.33.3)
+- `KHR_materials_scatter` — import/export (9.33.0); `KHR_materials_volume_scatter` is also present in 9.36.0 (version added unverified)
 - `KHR_interactivity` — behaviour graphs (import updated 9.x; export via serializers 9.27+)
 
 For Draco-compressed glTF, additional setup required:

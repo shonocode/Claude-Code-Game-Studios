@@ -1,6 +1,6 @@
 # Babylon.js — Current Best Practices
 
-Last verified: 2026-09-25 | Engine: Babylon.js 9.28
+Last verified: 2026-11-16 | Engine: Babylon.js 9.36
 
 Distilled from official Babylon.js docs, forum guidance, and community consensus
 as of the pin date. For deep dives, follow links to https://doc.babylonjs.com/.
@@ -91,7 +91,7 @@ Always pass an explicit `Scene` reference to APIs that take one — never rely o
 
 Prefer the **module-level** `LoadAssetContainerAsync()` for assets you may
 dispose later. Use `AppendSceneAsync()` only when permanently merging into the
-scene. The `SceneLoader` class is `@deprecated` in the 9.5 and 9.28 typings
+scene. The `SceneLoader` class is `@deprecated` in the 9.5, 9.28 and 9.36 typings
 ("The module level functions are more efficient for bundler tree shaking and
 allow plugin options to be passed through") — it still works, but do not write
 new code against it.
@@ -223,6 +223,22 @@ budget forces the switch.
 ### Rendering
 - For GPU-bound scenes, consider `FSR1RenderingPipeline` (9.21.1; WebGPU, WebGL2)
   for upscaling instead of lowering `engine.setHardwareScalingLevel` alone.
+
+## 9.28 → 9.36 Updates
+
+- **WebGPU depth**: when targeting WebGPU, consider
+  `useReverseDepthBuffer: true` (9.31.1) with `stencil: false` for
+  `depth32float` — the typings recommend it for WebGPU and note little gain on
+  WebGL. Re-check any custom depth comparisons in shaders before enabling it.
+- **Frame pacing**: `WebGPUEngine.maxFramesInFlight` (9.33.3, default `0` = no
+  limit) can cap input latency on WebGPU; it is opt-in.
+- **Textures**: KTX2 stays the production texture format. 9.33.1 adds a
+  runtime/tool-side encoder (`KhronosTextureContainer2Encoder`); keep encoding in
+  the asset pipeline rather than at load time.
+- **Debugging**: Inspector Lite (`@babylonjs/inspector/lite`, needs
+  `@babylonjs/lite`) is a lighter alternative to Inspector v2. Both are dev-only —
+  load them behind a dynamic `import()` so they stay out of production bundles.
+- **HTML in canvas**: do not call `InstallHtmlInCanvasPolyfill` (deprecated 9.36).
 
 ## Source Documents
 

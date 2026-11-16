@@ -1,6 +1,6 @@
 # Babylon.js Input — Quick Reference
 
-Last verified: 2026-09-25 | Engine: Babylon.js 9.28
+Last verified: 2026-11-16 | Engine: Babylon.js 9.36
 
 Babylon.js handles input via `Scene` observables, `InputManager`, and the
 WebXR input subsystem for controllers / hands.
